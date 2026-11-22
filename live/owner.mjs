@@ -1,6 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import agentIcons from '../dist/agent-icons.js';
 import {fail} from './store.mjs';
 import {createCatalogActions} from './owner-catalog.mjs';
 import {createToolRunner} from './agent.mjs';
@@ -11,6 +12,9 @@ const assets=new Map([
   ['/', ['ui/index.html','text/html; charset=utf-8']],
   ['/app.js', [['../dist/discovery-data.js','../dist/overview.js','ui/integrations.js','ui/connection-pages.js','ui/registries.js','ui/account.js','ui/workspace.js'],'text/javascript']],
   ['/style.css', [['../dist/style.css','ui/workspace.css','ui/integrations.css','ui/connection-pages.css','ui/registries.css','ui/account.css'],'text/css']],
+  ['/assets/agent-icons.js',['../dist/agent-icons.js','text/javascript']],
+  ['/assets/agent-icons.css',['../dist/agent-icons.css','text/css']],
+  ...agentIcons.catalog.map(({key})=>['/assets/agents/'+key+'.png',['../dist/agents/'+key+'.png','image/png']]),
   ['/assets/icons.js',['../dist/icons.js','text/javascript']],['/assets/public.ttf',['../dist/public.ttf','font/ttf']],
   ['/assets/public-semibold.ttf',['../dist/public-semibold.ttf','font/ttf']],['/assets/plex.ttf',['../dist/plex.ttf','font/ttf']],
   ['/favicon.svg',['../dist/favicon.svg','image/svg+xml']],['/assets/favicon.svg',['../dist/favicon.svg','image/svg+xml']]

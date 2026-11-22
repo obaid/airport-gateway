@@ -176,7 +176,7 @@ async function runCatalogTool(store,getCatalog,grant,tool,transport,args) {
   const exchange={channel,request,response:null};
   function deny(detail) {
     const result={outcome:'Blocked',detail,providerCalled:false};
-    store.log(ws,grant.actor,tool,'Blocked',false,detail,{...exchange,response:{outcome:'Blocked'}});
+    store.log(ws,grant.actor,tool,'Blocked',false,detail,{...exchange,response:{outcome:'Blocked'}},grant.clientType);
     return result;
   }
   if (!catalogAccess) return deny('This credential has no catalog access.');
@@ -188,7 +188,7 @@ async function runCatalogTool(store,getCatalog,grant,tool,transport,args) {
     const latest=store.resolveTool(ws,tool);
     return store.canUseCatalog(grant) && latest?.revision===policy.revision && latest.account===policy.account;
   };
-  const logId=store.log(ws,grant.actor,tool,'Running',true,'Verifying the approved provider tool and connected account.',exchange);
+  const logId=store.log(ws,grant.actor,tool,'Running',true,'Verifying the approved provider tool and connected account.',exchange,grant.clientType);
   let dispatched=false,result;
   try {
     // The adapter resolves this exact version and verifies account ownership.
@@ -241,7 +241,7 @@ export function createToolRunner({store,getProvider,getCatalog=getProvider}) {
     const exchange = {channel:context.channel,request:context.request,response:null};
     function deny(detail) {
       const result = {outcome:'Blocked',providerCalled:false,detail};
-      store.log(ws,actor,tool,'Blocked',false,detail,{...exchange,response:context.render(result)});
+      store.log(ws,actor,tool,'Blocked',false,detail,{...exchange,response:context.render(result)},grant.clientType);
       return result;
     }
     const expired = () => !store.isGrantActive(grant);
@@ -251,7 +251,7 @@ export function createToolRunner({store,getProvider,getCatalog=getProvider}) {
     if (row.policy !== 'Allow') return deny('Workspace policy blocks inbox counts. The request stopped at Airport.');
     const provider = getProvider();
     if (row.status !== 'active' || !row.account || !provider) return deny('A verified Gmail connection and configured Composio key are required.');
-    const logId = store.log(ws,actor,tool,'Running',true,'Requested the INBOX label totals through Composio.',exchange);
+    const logId = store.log(ws,actor,tool,'Running',true,'Requested the INBOX label totals through Composio.',exchange,grant.clientType);
     let result;
     try {
       const {total,unread} = await provider.counts(row.owner,row.account);

@@ -1,0 +1,44 @@
+.agent-icon {
+  --agent-size: 32px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--agent-size);
+  height: var(--agent-size);
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+.agent-icon img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.agent-icon-letter {
+  border-radius: 24%;
+  background: #c1e5d6;
+  color: #173c33;
+  font: 650 calc(var(--agent-size) * .53)/1 system-ui, sans-serif;
+  letter-spacing: 0;
+  text-indent: 0;
+}
+.agent-icon-letter[data-tone="1"] { background: #d9d1f0; color: #44365c; }
+.agent-icon-letter[data-tone="2"] { background: #bcdced; color: #213f59; }
+.agent-icon-letter[data-tone="3"] { background: #f0d4b8; color: #56391e; }
+.agent-icon-letter[data-tone="4"] { background: #f4ccd1; color: #5e2b38; }
+.agent-icon-letter[data-tone="5"] { background: #d5dfa9; color: #374420; }
+.agent-icon-size-12 { --agent-size: 12px; }
+.agent-icon-size-14 { --agent-size: 14px; }
+.agent-icon-size-16 { --agent-size: 16px; }
+.agent-icon-size-18 { --agent-size: 18px; }
+.agent-icon-size-20 { --agent-size: 20px; }
+.agent-icon-size-22 { --agent-size: 22px; }
+.agent-icon-size-24 { --agent-size: 24px; }
+.agent-icon-size-26 { --agent-size: 26px; }
+.agent-icon-size-28 { --agent-size: 28px; }
+.agent-icon-size-30 { --agent-size: 30px; }
+.agent-icon-size-32 { --agent-size: 32px; }
+.agent-icon-size-34 { --agent-size: 34px; }
+.agent-icon-size-36 { --agent-size: 36px; }
+.agent-icon-size-38 { --agent-size: 38px; }
+.agent-icon-size-40 { --agent-size: 40px; }
+.agent-icon-size-42 { --agent-size: 42px; }
+.agent-icon-size-44 { --agent-size: 44px; }
+.agent-icon-size-48 { --agent-size: 48px; }
+.agent-icon-size-56 { --agent-size: 56px; }
+.agent-icon-size-64 { --agent-size: 64px; }

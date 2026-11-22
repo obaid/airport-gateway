@@ -5,6 +5,13 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
   const art = window.Art || {icon:()=>'', logo:()=>'', brand:()=>''};
   const icon = (name,size=16) => art.icon(name,size);
+  const agentIcons = window.AirportAgentIcons;
+  const agentLogo = (name,size,clientType) => agentIcons?.render(name,{size,clientType}) || '';
+  const ownerRequest = entry => entry.exchange?.channel==='owner' || entry.actor==='Owner console';
+  const requestLogo = (entry,size) => ownerRequest(entry) ? icon('personal',size) :
+    entry.actor ? agentLogo(entry.actor,size,entry.clientType) : icon('agents',size);
+  const invitationLogo = (invite,size) => invite.name || (invite.clientType && invite.clientType!=='custom') ?
+    agentLogo(invite.name,size,invite.clientType) : icon('agents',size);
   const btn = (action,label,kind='',disabled=false) => `<button type="button" data-action="${action}" class="button ${kind}" ${disabled?'disabled':''}>${esc(label)}</button>`;
   const badge = (label,kind='') => `<span class="badge ${kind}">${esc(label)}</span>`;
   const heading = (title,mark,aside='') => `<div class="panel-head"><div>${mark}<h2>${esc(title)}</h2></div>${aside}</div>`;
@@ -125,7 +132,7 @@
     const old=$('#muse [name=code]');
     const preserve=old && old.form.dataset.codeWorkspace===w.id && (!old.form.dataset.pair || old.form.dataset.pair===pending?.id);
     const restoreFocus=preserve && document.activeElement===old;
-    region('muse',[w.id,active,available,w.status,w.policy,known,stage,inv?.expiresAt,invites.map(i=>[i.id,i.at])],heading('Muse access',art.logo('muse',28),badge(labels[stage] || (active?'Paired':'Unpaired'),stage==='waiting'?'ask':active?'good':''))+
+    region('muse',[w.id,active,available,w.status,w.policy,known,stage,inv?.expiresAt,invites.map(i=>[i.id,i.at])],heading('Muse access',agentLogo('Muse',28,'muse'),badge(labels[stage] || (active?'Paired':'Unpaired'),stage==='waiting'?'ask':active?'good':''))+
       `<div class="body">${body}</div>`);
     const next=$('#muse [name=code]');
     if(preserve && next && next!==old){next.value=old.value;if(restoreFocus){next.focus({preventScroll:true});next.setSelectionRange(old.selectionStart,old.selectionEnd);}}
@@ -212,7 +219,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     return `<details class="audit-entry" data-record="${esc(entry.id)}"${opened?' open':''}>
       <summary class="audit-line">
         <span class="audit-op"><span class="audit-chevron" aria-hidden="true">${icon('chevron-right',15)}</span><span class="tool"><span class="sr-only">Tool </span>${esc(entry.tool)}</span></span>
-        <span class="audit-actor"><span class="sr-only">Actor </span>${esc(entry.actor)}</span>
+        <span class="audit-actor actor-with-icon">${requestLogo(entry,20)}<span><span class="sr-only">Actor </span>${esc(entry.actor)}</span></span>
         <span class="audit-status"><span class="sr-only">Outcome </span>${badge(outcome,tone)}</span>
         <span class="audit-provider"><span class="audit-key">Provider called </span>${esc(provider)}</span>
         <time class="audit-time stamp" datetime="${esc(entry.at)}">${esc(when(entry.at,true))}</time>
@@ -259,7 +266,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   const manageBtn=(action,label,id='',primary=false)=>`<button class="button${primary?' primary':''}" type="button" data-manage="${action}" data-id="${esc(id)}">${esc(label)}</button>`;
   const mark=(key,size=25)=>{
     const aliases={googledrive:'drive',googlecalendar:'calendar'};
-    const known=['muse','duet','dot','gmail','calendar','slack','notion','drive','instagram','yahoo'];
+    const known=['gmail','calendar','slack','notion','drive','instagram','yahoo'];
     const code=String(key||'').toLowerCase();
     if(code==='gateway') return art.brand(size);
     if(known.includes(aliases[code]||code)) return art.logo(aliases[code]||code,size);
@@ -267,7 +274,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   };
   let graphWorkspace='',traceId='',graphObserver,graphFrame=0;
   function gatewayObjects(w) {
-    const agents=agentGrants(w).map(a=>({key:'agent:'+a.id,id:a.id,name:a.actor,mark:a.actor,kind:'Agent',active:true,status:'Connected',action:'agent-info',actionLabel:'Manage agent',info:describeGrant(a.expiresAt)}));
+    const agents=agentGrants(w).map(a=>({key:'agent:'+a.id,id:a.id,name:a.actor,clientType:a.clientType,kind:'Agent',active:true,status:'Connected',action:'agent-info',actionLabel:'Manage agent',info:describeGrant(a.expiresAt)}));
     const invite=state.invites?.some(i=>i.workspace===w.id) || w.invitation;
     if(w.grant || invite) agents.unshift({key:'muse',name:'Muse',mark:'muse',kind:'Agent',active:!!w.grant,status:w.grant?'Paired':invite?'Pairing':'Unpaired',action:'muse',actionLabel:w.grant?'Manage access':'Set up Muse',info:w.grant?'Muse is authorized to request enabled tools in this workspace.':invite?'A pairing invitation is in progress for this workspace.':'Connect Muse with a workspace token or pairing invitation.'});
     const apps=workspaceApps(w).map(c=>({key:'app:'+c.id,id:c.id,name:c.label || toolkitName(c.toolkit),mark:c.toolkit,kind:'App',active:state.ready&&c.status==='active'&&toolCount(c)>0,status:c.status==='active'?countText(toolCount(c),'enabled tool'):'Awaiting authorization',action:'app-info',actionLabel:'Manage connection',info:toolkitName(c.toolkit)+' · '+(c.status==='active'?'Verified connection':'Pending connection')}));
@@ -284,8 +291,8 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const stopped=entry.outcome==='Blocked' && entry.providerCalled===false;
     const performed=entry.providerCalled===true;
     const direction=performed?'Provider contacted':stopped?'Stopped at Airport':entry.providerCalled===false?'Handled by Airport':'Provider path unrecorded';
-    const owner=entry.exchange?.channel==='owner'||entry.actor==='Owner console';
-    const actor=entry.actor?{key:'trace-actor',name:entry.actor,kind:owner?'Owner':'Agent',mark:owner?'owner':entry.actor,active:true,status:owner?'Owner request':'Requester',info:'Requested '+entry.tool+'.',route:'trace-in'}:null;
+    const owner=ownerRequest(entry);
+    const actor=entry.actor?{key:'trace-actor',name:entry.actor,kind:owner?'Owner':'Agent',clientType:entry.clientType,active:true,status:owner?'Owner request':'Requester',info:'Requested '+entry.tool+'.',route:'trace-in'}:null;
     const outbound=app?{...app,key:'trace-app',kind:'App',active:performed,status:performed?'Provider contacted':entry.providerCalled===false?'Not contacted':'Call unrecorded',route:performed?'trace-out':stopped?'trace-stop':'none'}:null;
     return {agents:actor?[actor]:[],apps:outbound?[outbound]:[],gateway:{key:'gateway',name:'Airport',mark:'gateway',kind:'Gateway',active:true,status:entry.outcome||'Unknown',info:direction},direction};
   }
@@ -338,7 +345,8 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
         const display=left?n.name:n.key==='gmail'?'Gmail':historical?n.name:toolkitName(n.mark);
         const sub=duplicate?(n.key==='gmail'?w.email||w.expectedEmail:n.name):'';
         const caption=[n.name,n.status,n.info].filter(Boolean).join(' · ');
-        return goLink(target,mark(n.mark,21)+'<span>'+esc(display)+(sub?'<small>'+esc(sub)+'</small>':'')+'</span>','map-node',`data-node="${esc(n.key)}" data-ready="${n.active?'yes':'no'}" data-wire-mode="${esc(n.route||'')}" title="${esc(caption)}" aria-label="${esc(caption)}"`);
+        const nodeLogo=n.kind==='Agent'?agentLogo(n.name,22,n.clientType):n.kind==='Owner'?icon('personal',22):mark(n.mark,21);
+        return goLink(target,nodeLogo+'<span>'+esc(display)+(sub?'<small>'+esc(sub)+'</small>':'')+'</span>','map-node',`data-node="${esc(n.key)}" data-ready="${n.active?'yes':'no'}" data-wire-mode="${esc(n.route||'')}" title="${esc(caption)}" aria-label="${esc(caption)}"`);
       }).join('');
       const empty=trace?`<span class="map-empty">${left?'Requester not recorded':trace.providerCalled===false?'No app called':'App not recorded'}</span>`:left?(supportsCatalog()?`<button class="map-empty" data-manage="agent-add">${icon('plus',14)}Add agent</button>`:'<span class="map-empty">No active agents</span>'):`<button class="map-empty" data-manage="${supportsCatalog()?'catalog':'mail'}">${icon('plus',14)}Add connection</button>`;
       return `<div class="map-group ${side}"><div class="map-caption">${left?'Agents':'Connections'}</div><div class="node-stack">${items||empty}</div>${entries.length>4?goLink(left?'#agents':'#connections','+'+(entries.length-4)+' more','more-nodes'):''}</div>`;
@@ -420,7 +428,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     week.other=Math.max(0,week.requests-week.allowed-week.blocked-week.failed);
     const recent=all.slice(0,4).map(entry=>{
       const target=traceObjects(w,entry).apps[0];
-      return {id:entry.id,actor:entry.actor||'Requester not recorded',service:target?.name||'',mark:entry.actor,
+      return {id:entry.id,actor:entry.actor,clientType:entry.clientType,exchange:{channel:entry.exchange?.channel},service:target?.name||'',
         tool:entry.exchange?.request?.operation?.slug||entry.tool,outcome:entry.outcome,at:entry.at};
     });
     return {workspaceName:w.name,agents:agentGrants(w).length+(w.grant?1:0),
@@ -428,7 +436,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function workspaceSummary(w){
     const model=overviewModel(w),api=window.AirportOverview;
-    const helpers={escape:esc,icon,logo:mark,time:v=>new Date(v).toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'}),
+    const helpers={escape:esc,icon,logo:mark,requestLogo,time:v=>new Date(v).toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'}),
       href:path=>hrefFor('#'+String(path).replace(/^#/,'')),activityURL:id=>hrefFor('#activity/'+encodeURIComponent(id))};
     if(api){
       region('workspace-summary',[w.id,model],api.stats(model,helpers));
@@ -437,23 +445,23 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function registerRows(w,kind){
     const models=gatewayObjects(w);
-    const row=(m,name,sub,status,action,id,label='Manage')=>{
+    const row=(logo,name,sub,status,action,id,label='Manage')=>{
       const detail={mail:'#connections/pilot-gmail/settings',muse:'#agents/muse','app-info':'#connections/'+encodeURIComponent(id||'')+'/settings','agent-info':'#agents/'+encodeURIComponent(id||'')}[action];
-      const content=`<span class="registry-mark">${mark(m)}</span><span class="registry-name"><strong>${esc(name)}</strong><small>${esc(sub)}</small></span><span class="registry-tag">${esc(status)}</span><span class="row-link">${icon('chevron-right',17)}</span>`;
+      const content=`<span class="registry-mark">${logo}</span><span class="registry-name"><strong>${esc(name)}</strong><small>${esc(sub)}</small></span><span class="registry-tag">${esc(status)}</span><span class="row-link">${icon('chevron-right',17)}</span>`;
       if(detail)return `<a class="registry-row" href="${esc(hrefFor(detail))}" data-route="${esc(detail)}" data-id="${esc(id||'')}" aria-label="${esc(label+' '+name)}">${content}</a>`;
       return `<button class="registry-row" type="button" data-manage="${esc(action)}" data-id="${esc(id||'')}" aria-label="${esc(label+' '+name)}">${content}</button>`;
     };
     if(kind==='connections'){
-      const rows=models.apps.map(c=>row(c.mark,c.name,c.info,c.status,c.action,c.id)).join('');
+      const rows=models.apps.map(c=>row(mark(c.mark),c.name,c.info,c.status,c.action,c.id)).join('');
       const retired=(state.connections||[]).filter(c=>c.workspace===w.id&&c.status==='disabled');
-      const archive=retired.length?`<details class="retired-accounts"><summary>${esc(countText(retired.length,'disconnected account'))}</summary>${retired.map(c=>row(c.toolkit,c.label||toolkitName(c.toolkit),toolkitName(c.toolkit),'Disconnected','app-info',c.id,'Review')).join('')}</details>`:'';
+      const archive=retired.length?`<details class="retired-accounts"><summary>${esc(countText(retired.length,'disconnected account'))}</summary>${retired.map(c=>row(mark(c.toolkit),c.label||toolkitName(c.toolkit),toolkitName(c.toolkit),'Disconnected','app-info',c.id,'Review')).join('')}</details>`:'';
       region('connections',[w.id,rows,archive],heading('Workspace accounts',icon('connections',18),badge(String(models.apps.length)))+(rows||'<p class="empty">Connect an app to make its tools available in this workspace.</p>')+archive);
       return;
     }
     const entries=models.agents.filter(a=>a.active||a.status==='Pairing');
     const pending=agentInvites(w);
-    const accepted=entries.map(a=>row(a.mark,a.name,a.key==='muse'?'Saved connector':a.info,a.status,a.action,a.id)).join('');
-    const invites=pending.map(i=>row('invitation',i.name?i.name+' invitation':'One-use invitation','Invitation expires '+when(i.expiresAt),'Pending','inspect-agent-invite',i.id)).join('');
+    const accepted=entries.map(a=>row(agentLogo(a.name,28,a.clientType),a.name,a.key==='muse'?'Saved connector':a.info,a.status,a.action,a.id)).join('');
+    const invites=pending.map(i=>row(invitationLogo(i,28),i.name?i.name+' invitation':'One-use invitation','Invitation expires '+when(i.expiresAt),'Pending','inspect-agent-invite',i.id)).join('');
     region('agents',[w.id,accepted,invites],heading('Workspace agents',icon('agents',18),badge(String(entries.length)))+(accepted+invites||'<p class="empty">Add an agent to issue its own workspace credential.</p>'));
   }
   function renderShell(w,r){
@@ -539,7 +547,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const isCurrent=()=>!terminal&&workspaceId===w.id&&mountedKey===identity&&rootAttached();
     const rootAttached=()=>entry.root.isConnected;
     const guarded=fn=>(...args)=>{if(isCurrent())return fn(...args);};
-    const ctx={workspace:w,state,route:r,icon,logo:mark,mark,escape:esc,isCurrent,agentEndpoint,describeGrant,
+    const ctx={workspace:w,state,route:r,icon,logo:mark,mark,agentLogo,requestLogo,invitationLogo,escape:esc,isCurrent,agentEndpoint,describeGrant,
       auditEntry:entry=>entry.workspace===w.id?auditEntry(w,entry,true):'',
       navigate:guarded(navigate),toast:guarded(message),refresh:guarded(refresh),
       request:(path,data)=>isCurrent()?request(path,data):Promise.reject(new Error('This workspace view has closed.')),
@@ -566,7 +574,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       el.innerHTML=`<section class="panel feature-empty"><h2>${esc(toolkitName(c.toolkit))}</h2><p>${esc(c.status==='active'?'Verified account':'Authorization pending')}</p>${manageBtn(r.tab==='tools'?'tools-fallback':'app-fallback',r.tab==='tools'?'Browse tools':'Manage connection',c.id,true)}</section>`;
     }else if(r.page==='agents'&&scopedAgent(w,r.id)){
       const a=scopedAgent(w,r.id);
-      el.innerHTML=`<section class="panel agent-profile">${mark(a.actor,38)}<div><h2>${esc(a.actor)}</h2><p>${esc(describeGrant(a.expiresAt))}</p></div>${manageBtn('remove-agent','Revoke access',a.id)}</section>`;
+      el.innerHTML=`<section class="panel agent-profile">${agentLogo(a.actor,38,a.clientType)}<div><h2>${esc(a.actor)}</h2><p>${esc(describeGrant(a.expiresAt))}</p></div>${manageBtn('remove-agent','Revoke access',a.id)}</section>`;
     }else{
       el.innerHTML='<div class="panel feature-empty"><h2>Unavailable in this workspace</h2><p>Select another item from the workspace navigation.</p></div>';
     }
@@ -878,7 +886,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function agentInfo(id){
     const w=current(),a=scopedAgent(w,id);if(!a)return;
-    showDialog(a.actor,`<div class="identity-line">${mark(a.actor,30)}<div><h3>${esc(a.actor)}</h3><p>${esc(w.name)} workspace agent</p></div></div>
+    showDialog(a.actor,`<div class="identity-line">${agentLogo(a.actor,30,a.clientType)}<div><h3>${esc(a.actor)}</h3><p>${esc(w.name)} workspace agent</p></div></div>
       <p>${esc(describeGrant(a.expiresAt))} Tool access follows this workspace’s policies.</p>${actionRow(manageBtn('remove-agent','Revoke agent',a.id))}`);
   }
   function agentEndpoint(){
@@ -894,7 +902,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       endpoint?`If you support MCP, connect to ${endpoint} and call tools/list.`:'',
       remote && w.status==='active'?`For an HTTPS connector with inbox counts access, GET ${remote.replace(/\/+$/,'')}/api/gmail/inbox-counts.`:'',
       'If your app cannot use these connection methods, tell me which methods it supports.'].filter(Boolean).join(' ');
-    showDialog('Agent credential issued',`<p>${esc(r.actor)} · ${esc(w.name)}. ${esc(describeGrant(r.expiresAt))}</p>
+    showDialog('Agent credential issued',`<p class="actor-with-icon">${agentLogo(r.actor,24,r.clientType)}<span>${esc(r.actor)} · ${esc(w.name)}. ${esc(describeGrant(r.expiresAt))}</span></p>
       ${endpoint?formField('MCP endpoint','<input type="text" readonly value="'+esc(endpoint)+'">'):''}
       ${formField('Bearer token','<input id="connector-token" type="password" readonly autocomplete="off">')}
       ${actionRow(btn('copy-connector-token','Copy token','primary')+'<span role="status" id="token-copy-status"></span>')}
@@ -905,12 +913,14 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   function addAgent(w) {
     const canEnroll=Array.isArray(state.agentInvitations)&&Boolean(agentEndpoint());
     const nameInput=required=>formField(required?'Agent name':'Agent name (optional)',`<input name="name" ${required?'required':''} maxlength="64" autocomplete="off" placeholder="${required?'e.g. Research assistant':'Leave blank for the agent to choose'}">`);
+    const clients=(agentIcons?.catalog||[]).map(c=>`<option value="${esc(c.key)}">${esc(c.label)}</option>`).join('');
+    const clientPicker=formField('Agent icon',`<span class="agent-client-picker"><span class="agent-client-preview" aria-hidden="true">${icon('agents',24)}</span><select name="clientType"><option value="">Match agent name</option>${clients}<option value="custom">Custom · use a letter</option></select></span>`);
     const supported=Array.isArray(state.agentAccessLifetimes)?state.agentAccessLifetimes:['12h','7d','30d'];
     const options=Object.entries(lifetimeLabels).filter(([value])=>supported.includes(value)).map(([value,label])=>
       `<option value="${value}" ${value==='30d'?'selected':''}>${esc(label)}</option>`).join('');
     const lifetime=formField('Agent access duration','<select name="lifetime">'+options+'</select>');
-    const direct=`<form id="named-agent" class="fields"><p>For agents with a bearer credential field, issue a workspace token and paste it into the saved connector.</p>${nameInput(true)}${lifetime}${actionRow('<button type="submit" class="button'+(canEnroll?'':' primary')+'">Issue agent credential</button>')}</form>`;
-    const enroll=`<form id="create-agent-invitation" class="fields"><p>Create a one-use setup prompt to connect an agent to ${esc(w.name)}. It can register under a name you choose or supply its own.${verifiedWorkspace(w)?'':' Connect an app and allow a tool when you’re ready to give it access.'}</p>${nameInput(false)}${lifetime}${actionRow('<button type="submit" class="button primary">Create setup prompt</button>')}</form>`;
+    const direct=`<form id="named-agent" class="fields"><p>For agents with a bearer credential field, issue a workspace token and paste it into the saved connector.</p>${nameInput(true)}${clientPicker}${lifetime}${actionRow('<button type="submit" class="button'+(canEnroll?'':' primary')+'">Issue agent credential</button>')}</form>`;
+    const enroll=`<form id="create-agent-invitation" class="fields"><p>Create a one-use setup prompt to connect an agent to ${esc(w.name)}. It can register under a name you choose or supply its own.${verifiedWorkspace(w)?'':' Connect an app and allow a tool when you’re ready to give it access.'}</p>${nameInput(false)}${clientPicker}${lifetime}${actionRow('<button type="submit" class="button primary">Create setup prompt</button>')}</form>`;
     showDialog('Add agent',canEnroll?enroll+'<details class="agent-invite-choice"><summary>Connect with a bearer token instead</summary>'+direct+'</details>':direct);
   }
   function newAgentInvite(w,result,selectedLifetime) {
@@ -921,7 +931,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       (result.name?`I chose the name ${JSON.stringify(result.name)}. `:'Choose your own agent name. ')+
       `POST JSON to ${base}/agents/register with this body: ${JSON.stringify(result.name?{invitation:result.invitation,name:result.name}:{invitation:result.invitation,name:'<your chosen name>'})}. Redeem the one-use invitation by ${result.expiresAt}. ${access} Save the returned bearer token in your private credential store and keep it out of chat. If you support MCP, connect to ${endpoint} with bearer authentication and call tools/list. `+
       (w.status==='active'?`If you use HTTPS connectors, GET ${base}/api/gmail/inbox-counts for authorized inbox totals.`:'If you use another connector type, tell me which transport it supports.');
-    showDialog('Agent setup prompt',`<p>Paste this prompt into the agent you want to connect. It contains a one-use invitation valid for 10 minutes.</p>
+    showDialog('Agent setup prompt',`<p class="actor-with-icon">${invitationLogo(result,24)}<span>Paste this prompt into ${result.name?esc(result.name):'the agent you want to connect'}. It contains a one-use invitation valid for 10 minutes.</span></p>
       ${formField('Setup prompt for '+(result.name||'your agent'),'<textarea id="enrollment-prompt" readonly rows="7" spellcheck="false"></textarea>')}
       <p class="hint">Invitation expires ${esc(when(result.expiresAt))}. ${esc(access)}</p>
       ${actionRow(manageBtn('copy-setup','Copy setup prompt','',true)+btn('close','Done','minor')+'<span role="status" id="token-copy-status"></span>')}`);
@@ -954,7 +964,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       case 'agent-add':addAgent(w);break;
       case 'inspect-agent-invite':{
         const invitation=agentInvites(w).find(v=>v.id===id);if(!invitation)break;
-        showDialog('Pending agent invitation',`<p>This invitation can register one agent in ${esc(w.name)} until ${esc(when(invitation.expiresAt))}. ${esc(describeEnrollment(invitation.lifetime))} Revoking the invitation prevents registration.</p>${actionRow(closeButton+manageBtn('remove-agent-invite','Revoke invitation',id))}`);break;
+        showDialog('Pending agent invitation',`<div class="identity-line">${invitationLogo(invitation,34)}<strong>${esc(invitation.name||'Agent chooses name')}</strong></div><p>This invitation can register one agent in ${esc(w.name)} until ${esc(when(invitation.expiresAt))}. ${esc(describeEnrollment(invitation.lifetime))} Revoking the invitation prevents registration.</p>${actionRow(closeButton+manageBtn('remove-agent-invite','Revoke invitation',id))}`);break;
       }
       case 'remove-agent-invite':if(agentInvites(w).some(v=>v.id===id))mutateManagement(async()=>{
         await request('agent-invite-remove',{workspace:w.id,id});closeDialog();message('Agent invitation revoked.');
@@ -1052,6 +1062,26 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const btnEl=e.target.closest('[data-action]'); if(!btnEl || !Object.hasOwn(handlers,btnEl.dataset.action))return;
     handlers[btnEl.dataset.action]();
   });
+  dialog.addEventListener('input',e=>{
+    const f=e.target.form;
+    if(!['named-agent','create-agent-invitation'].includes(f?.id))return;
+    const {name,clientType}=f.elements;
+    const w=current();
+    if(!w)return;
+    const type=clientType.value;
+    if(e.target===clientType && type!=='muse' && name.dataset.suggestedMuse===name.value)name.value='';
+    if(e.target===name || type!=='muse')delete name.dataset.suggestedMuse;
+    const chosen=name.value.trim();
+    if((e.target===clientType && type==='muse' && !chosen) || chosen.toLowerCase()==='muse'){
+      const base=w.name.slice(0,51)+' Muse';
+      const taken=new Set([...agentGrants(w).map(a=>a.actor),...agentInvites(w).map(i=>i.name)].filter(Boolean).map(n=>n.toLowerCase()));
+      let suggestion=base;
+      for(let i=2;taken.has(suggestion.toLowerCase());i++)suggestion=base+' '+i;
+      if(!chosen){name.value=suggestion;name.dataset.suggestedMuse=suggestion;}
+      name.setCustomValidity(chosen?'Muse is reserved for the saved connector. Try “'+suggestion+'” for this agent.':'');
+    }else name.setCustomValidity('');
+    f.querySelector('.agent-client-preview').innerHTML=invitationLogo({name:name.value.trim(),clientType:type},28);
+  });
   document.addEventListener('change',e=>{
     if(e.target.id==='trace-select' && current()){traceId=e.target.value;graph(current(),gatewayObjects(current()));return;}
     if(e.target.matches('[data-tool-access]') && directory?.type==='tools') {
@@ -1073,11 +1103,15 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(f.id==='directory-search'){if(directory){directory.search=f.elements.q.value.trim();directory.index=0;directory.cursors=[''];loadDirectory();}return;}
     if(f.id==='workspace-create'){const name=f.elements.name.value.trim();if(!name)return;mutateManagement(async()=>{const r=await request('workspace-create',{name});testResult=null;closeDialog();await refresh();navigate('#overview',r.workspace.id);message('Workspace created.');});return;}
     if(f.id==='create-agent-invitation'){
-      const name=f.elements.name.value.trim(),lifetime=f.elements.lifetime.value;
+      const name=f.elements.name.value.trim(),lifetime=f.elements.lifetime.value,clientType=f.elements.clientType.value;
       if(!Array.isArray(state.agentInvitations)||!agentEndpoint())return;
-      mutateManagement(async w=>{const r=await request('agent-invite',{workspace:w.id,lifetime,...(name?{name}:{})});newAgentInvite(w,r,lifetime);});return;
+      mutateManagement(async w=>{const r=await request('agent-invite',{workspace:w.id,lifetime,...(name?{name}:{}),...(clientType?{clientType}:{})});newAgentInvite(w,r,lifetime);});return;
     }
-    if(f.id==='named-agent'){const name=f.elements.name.value.trim(),lifetime=f.elements.lifetime.value;if(!name)return;mutateManagement(async w=>{const r=await request('agent-add',{workspace:w.id,name,lifetime});newAgentSecret(w,r);});return;}
+    if(f.id==='named-agent'){
+      const name=f.elements.name.value.trim(),lifetime=f.elements.lifetime.value,clientType=f.elements.clientType.value;
+      if(!name)return;
+      mutateManagement(async w=>{const r=await request('agent-add',{workspace:w.id,name,lifetime,...(clientType?{clientType}:{})});newAgentSecret(w,r);});return;
+    }
     if(f.id==='toolkit-add'){
       const label=f.elements.label.value.trim(),toolkit=f.dataset.toolkit;
       if(!label)return;mutateManagement(async w=>{const r=await request('connection-add',{workspace:w.id,toolkit,label});

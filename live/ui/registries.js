@@ -69,22 +69,22 @@
     v.el.querySelector('[data-rg-count]').textContent=String(rows.length);
     host.innerHTML=rows.map(r=>{
       const service=recordService(r);
-      return `<a class="request-row rg-request" href="#activity/${enc(r.id)}"><span class="entity-id rg-id"><strong>${esc(operation(r))}</strong><small>${esc(r.actor||'Unknown')} → ${esc(service)}</small></span>
+      return `<a class="request-row rg-request" href="#activity/${enc(r.id)}"><span class="entity-id rg-id"><strong>${esc(operation(r))}</strong><small class="actor-with-icon">${ctx.requestLogo(r,16)}<span>${esc(r.actor||'Unknown')} → ${esc(service)}</span></small></span>
         ${chip(ctx,r.outcome||'Unknown',statusTone(r.outcome))}<time datetime="${esc(r.at)}">${esc(time(r.at))}</time>${icon('chevron-right',15)}</a>`;
     }).join('')||empty(ctx,'No matching requests','Try another search or decision.');
   }
   function agents(ctx,logs) {
     const {workspace:w,escape:esc,icon}=ctx;
-    const agents=scoped(ctx.state.agentGrants,ctx).map(a=>({...a,key:a.actor,label:a.actor,status:'Active',sub:a.expiresAt?'Expires '+time(a.expiresAt):a.expiresAt===null?'Never expires':'Expiry unrecorded'}));
+    const agents=scoped(ctx.state.agentGrants,ctx).map(a=>({...a,label:a.actor,status:'Active',sub:a.expiresAt?'Expires '+time(a.expiresAt):a.expiresAt===null?'Never expires':'Expiry unrecorded'}));
     const pairing=w.invitation||scoped(ctx.state.invites,ctx).length;
-    if(w.grant||pairing)agents.unshift({id:'muse',key:'muse',label:'Muse',status:w.grant?'Paired':'Pairing',sub:'Saved connector'});
+    if(w.grant||pairing)agents.unshift({id:'muse',clientType:'muse',label:'Muse',status:w.grant?'Paired':'Pairing',sub:'Saved connector'});
     const rows=agents.map(a=>{
       const last=logs.find(log=>log.actor===a.label);
-      return `<a class="entity-row agent-row rg-entity rg-agent" href="#agents/${enc(a.id)}">${mark(ctx,a.key)}<span class="entity-id rg-id"><strong>${esc(a.label)}</strong><small>${esc(a.sub)}</small></span>
+      return `<a class="entity-row agent-row rg-entity rg-agent" href="#agents/${enc(a.id)}"><span class="rg-agent-icon">${ctx.agentLogo(a.label,34,a.clientType)}</span><span class="entity-id rg-id"><strong>${esc(a.label)}</strong><small>${esc(a.sub)}</small></span>
         <span class="entity-meta rg-meta"><strong>${last?esc(time(last.at)):'No requests'}</strong><small>Last request</small></span>${chip(ctx,a.status,a.status==='Pairing'?'ask':'allow')}${icon('chevron-right',16)}</a>`;
     }).join('');
     const invitations=scoped(ctx.state.agentInvitations,ctx);
-    const pending=invitations.map(i=>`<button type="button" class="entity-row agent-row rg-entity rg-agent" data-manage="inspect-agent-invite" data-id="${esc(i.id)}">${mark(ctx,'invitation')}
+    const pending=invitations.map(i=>`<button type="button" class="entity-row agent-row rg-entity rg-agent" data-manage="inspect-agent-invite" data-id="${esc(i.id)}"><span class="rg-agent-icon">${ctx.invitationLogo(i,34)}</span>
       <span class="entity-id rg-id"><strong>${esc(i.name||'Agent chooses name')}</strong><small>One-use invitation</small></span><span class="entity-meta rg-meta"><strong>${esc(time(i.expiresAt))}</strong><small>Invitation expires</small></span>
       ${chip(ctx,'Pending','ask')}${icon('chevron-right',16)}</button>`).join('');
     return section(ctx,'Workspace agents',rows||empty(ctx,'No agents yet','Add an agent to issue credentials for this workspace.'),agents.length)+
@@ -95,7 +95,7 @@
     if(!a)return section(ctx,'Agent unavailable',empty(ctx,'This agent is unavailable','Choose another agent in this workspace.'));
     const access=ctx.describeGrant?.(a.expiresAt) || (a.expiresAt?'Expires '+time(a.expiresAt):a.expiresAt===null?'Never expires':'Expiry unrecorded');
     const endpoint=ctx.agentEndpoint?.();
-    const facts=`<div class="panel-inner rg-body"><dl class="facts rg-facts"><div><dt>Agent name</dt><dd>${esc(a.actor)}</dd></div><div><dt>Workspace</dt><dd>${esc(ctx.workspace.name)}</dd></div>
+    const facts=`<div class="panel-inner rg-body"><dl class="facts rg-facts"><div><dt>Agent name</dt><dd class="actor-with-icon">${ctx.agentLogo(a.actor,24,a.clientType)}<span>${esc(a.actor)}</span></dd></div><div><dt>Workspace</dt><dd>${esc(ctx.workspace.name)}</dd></div>
       <div><dt>Credential</dt><dd>${esc(access)}</dd></div></dl><button class="button" type="button" data-manage="remove-agent" data-id="${esc(a.id)}">Revoke access</button></div>`;
     const setup=`<div class="panel-inner rg-body"><p>Use the bearer credential issued for this agent in its connector.</p>${endpoint?`<label class="rg-endpoint"><span>MCP endpoint</span><input readonly value="${esc(endpoint)}"></label>`:'<p>The agent endpoint is unavailable.</p>'}</div>`;
     return `<div class="agent-detail-grid rg-columns">${section(ctx,'Workspace access',facts)}${section(ctx,'Connector setup',setup)}</div>${requests(v,v.rows,'Agent activity')}`;

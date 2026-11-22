@@ -22,8 +22,9 @@
     const escape=ui.escape;
     const rows=recent.slice(0,4).map(l=>{
       const outcome=String(l.outcome||'Unknown');
-      return '<a class="feed-row" href="'+escape(ui.activityURL(l.id))+'"><span class="feed-logo">'+ui.logo(l.mark||'custom',24)+'</span><span class="feed-id"><strong>'+
-        escape(l.actor)+(l.service?' <span class="route-arrow">→</span> '+escape(l.service):'')+'</strong><code>'+escape(l.tool)+'</code></span><span class="state-badge '+escape(outcome.toLowerCase())+'"><i></i>'+escape(outcome)+'</span><span class="feed-time">'+escape(ui.time(l.at))+'</span></a>';
+      const requester=ui.requestLogo?ui.requestLogo(l,24):ui.logo(l.mark||'custom',24);
+      return '<a class="feed-row" href="'+escape(ui.activityURL(l.id))+'"><span class="feed-logo">'+requester+'</span><span class="feed-id"><strong>'+
+        escape(l.actor||'Requester not recorded')+(l.service?' <span class="route-arrow">→</span> '+escape(l.service):'')+'</strong><code>'+escape(l.tool)+'</code></span><span class="state-badge '+escape(outcome.toLowerCase())+'"><i></i>'+escape(outcome)+'</span><span class="feed-time">'+escape(ui.time(l.at))+'</span></a>';
     });
     return '<section class="panel feed"><div class="panel-head"><h2>Recent requests</h2><a class="text-btn" href="'+escape(ui.href('activity'))+'">View log '+ui.icon('chevron-right',13)+'</a></div>'+
       (rows.join('')||'<div class="empty">Run a test request to see its decision here.</div>')+'</section>';

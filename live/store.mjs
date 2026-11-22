@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import agentIcons from '../dist/agent-icons.js';
 import { createEnrollment } from './enrollment.mjs';
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 
@@ -6,6 +7,12 @@ export const secret = () => randomBytes(32).toString('base64url');
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
 export const same = (a,b) => typeof a === 'string' && typeof b === 'string' && timingSafeEqual(Buffer.from(hash(a)),Buffer.from(hash(b)));
 export function fail(message, status = 400) { throw Object.assign(new Error(message), {status}); }
+const agentClientTypes = new Set([...agentIcons.catalog.map(entry=>entry.key),'custom']);
+function agentClientType(value) {
+  if (value == null || value === 'auto') return null;
+  if (!agentClientTypes.has(value)) fail('Choose a listed agent app or Custom.');
+  return value;
+}
 const now = () => Date.now();
 const iso = ms => new Date(ms).toISOString();
 const ttl = 10 * 60 * 1000;
@@ -86,7 +93,7 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     );
     CREATE TABLE IF NOT EXISTS workspace_agents (
       id TEXT PRIMARY KEY, workspace TEXT NOT NULL REFERENCES workspaces(id), actor TEXT NOT NULL,
-      bearerHash TEXT NOT NULL UNIQUE, expires INTEGER NOT NULL
+      bearerHash TEXT NOT NULL UNIQUE, expires INTEGER NOT NULL, clientType TEXT
     );
     CREATE TABLE IF NOT EXISTS pairings(
       id TEXT PRIMARY KEY, ws TEXT NOT NULL, inviteHash TEXT UNIQUE, receiptHash TEXT, codeHash TEXT,
@@ -97,6 +104,9 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       outcome TEXT NOT NULL, providerCalled INTEGER NOT NULL DEFAULT 0, detail TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS requests_at_workspace ON requests(at,workspace);
+    CREATE TABLE IF NOT EXISTS request_agent_clients(
+      request_id TEXT PRIMARY KEY REFERENCES requests(id) ON DELETE CASCADE, clientType TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS request_exchanges(
       request_id TEXT PRIMARY KEY REFERENCES requests(id) ON DELETE CASCADE,
       channel TEXT NOT NULL CHECK(channel IN ('mcp','http','owner')),
@@ -104,6 +114,10 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       response_json TEXT CHECK(response_json IS NULL OR json_valid(response_json))
     );
   `);
+  transaction(()=>{
+    if (!db.prepare('PRAGMA table_info(workspace_agents)').all().some(c=>c.name==='clientType'))
+      db.exec('ALTER TABLE workspace_agents ADD COLUMN clientType TEXT');
+  });
   // A process interruption leaves an honest record of the attempted lookup.
   const recover = () => transaction(() => {
     db.exec("UPDATE request_exchanges SET response_json=NULL WHERE request_id IN (SELECT id FROM requests WHERE outcome='Running')");
@@ -217,8 +231,8 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
   const approvedTools=ws=>db.prepare(approvedSQL+' ORDER BY t.mcpName').all(ws).map(unpackTool);
   function listAgentGrants(ws) {
     get(ws);
-    return db.prepare(`SELECT id,workspace,actor,expires FROM workspace_agents WHERE workspace=? AND ${activeAgent} ORDER BY actor`).all(ws,now())
-      .map(({expires,...r})=>({...r,expiresAt:agentExpiresAt(expires)}));
+    return db.prepare(`SELECT id,workspace,actor,expires,clientType FROM workspace_agents WHERE workspace=? AND ${activeAgent} ORDER BY actor`).all(ws,now())
+      .map(({expires,clientType,...r})=>({...r,...(clientType && {clientType}),expiresAt:agentExpiresAt(expires)}));
   }
   function availableAgentName(ws,name) {
     const actor=label(name);
@@ -233,23 +247,24 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     return agentDurations.get(lifetime);
   }
   // Called only within the issuing or registering transaction.
-  function insertNamedGrant(ws,name,lifetime) {
+  function insertNamedGrant(ws,name,lifetime,clientType) {
     const actor=availableAgentName(ws,name);
+    const type=agentClientType(clientType);
     const duration=grantDuration(lifetime);
     const id=randomUUID(),token=secret(),expires=duration===null ? neverExpires : now()+duration;
     db.prepare(`DELETE FROM workspace_agents WHERE workspace=? AND expires!=${neverExpires} AND expires<=?`).run(ws,now());
-    db.prepare('INSERT INTO workspace_agents(id,workspace,actor,bearerHash,expires) VALUES(?,?,?,?,?)').run(id,ws,actor,hash(token),expires);
-    return {id,workspace:ws,actor,token,expiresAt:agentExpiresAt(expires)};
+    db.prepare('INSERT INTO workspace_agents(id,workspace,actor,bearerHash,expires,clientType) VALUES(?,?,?,?,?,?)').run(id,ws,actor,hash(token),expires,type);
+    return {id,workspace:ws,actor,token,...(type && {clientType:type}),expiresAt:agentExpiresAt(expires)};
   }
-  function issueAgentGrant(ws,name,lifetime) {
+  function issueAgentGrant(ws,name,lifetime,clientType) {
     return transaction(()=>{
       get(ws);
-      const grant=insertNamedGrant(ws,name,lifetime);
+      const grant=insertNamedGrant(ws,name,lifetime,clientType);
       insertLog(ws,'Owner console','issue_agent_grant','Issued',false,'Issued a named agent workspace credential.');
       return grant;
     });
   }
-  const enrollment=createEnrollment({db,transaction,get,grantDuration,availableAgentName,insertNamedGrant,insertLog,secret,hash,fail});
+  const enrollment=createEnrollment({db,transaction,get,grantDuration,agentClientType,availableAgentName,insertNamedGrant,insertLog,secret,hash,fail});
   function revokeAgentGrant(ws,id) {
     get(ws);
     if(!db.prepare('DELETE FROM workspace_agents WHERE workspace=? AND id=?').run(ws,id).changes) fail('Unknown agent grant.',404);
@@ -334,9 +349,10 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     db.prepare('DELETE FROM pairings WHERE ws=?').run(ws);
     return {token, expiresAt:iso(expires)};
   }
-  function insertLog(ws,actor,tool,outcome,called,detail,exchange) {
+  function insertLog(ws,actor,tool,outcome,called,detail,exchange,clientType) {
     const id = randomUUID();
     db.prepare('INSERT INTO requests VALUES(?,?,?,?,?,?,?,?)').run(id,now(),ws,actor,tool,outcome,called?1:0,detail);
+    if (clientType) db.prepare('INSERT INTO request_agent_clients(request_id,clientType) VALUES(?,?)').run(id,clientType);
     if (exchange) {
       db.prepare('INSERT INTO request_exchanges(request_id,channel,request_json,response_json) VALUES(?,?,?,?)')
         .run(id,exchange.channel,JSON.stringify(exchange.request),exchange.response == null ? null : JSON.stringify(exchange.response));
@@ -391,10 +407,11 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       id:r.id,name:r.name,status:r.status,email:r.email,expectedEmail:r.expected,policy:r.policy,grant:validGrant(r),invitation:invitation(r.id)
     })),
     invites:db.prepare("SELECT id,ws AS workspace,at FROM pairings WHERE stage='waiting' AND tries<5 AND expires>? ORDER BY at DESC").all(now()).map(r=>({...r,at:iso(r.at)})),
-    logs:db.prepare(`SELECT r.*,x.channel,x.request_json,x.response_json FROM requests r
+    logs:db.prepare(`SELECT r.*,c.clientType,x.channel,x.request_json,x.response_json FROM requests r
+      LEFT JOIN request_agent_clients c ON c.request_id=r.id
       LEFT JOIN request_exchanges x ON x.request_id=r.id ORDER BY r.at DESC,r.rowid DESC LIMIT 100`).all()
-      .map(({channel,request_json,response_json,...r})=>({
-        ...r,at:iso(r.at),providerCalled:!!r.providerCalled,exchange:channel ? {
+      .map(({channel,request_json,response_json,clientType,...r})=>({
+        ...r,...(clientType && {clientType}),at:iso(r.at),providerCalled:!!r.providerCalled,exchange:channel ? {
           channel,request:JSON.parse(request_json),response:response_json === null ? null : JSON.parse(response_json)
         } : null
       }))
@@ -420,8 +437,10 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       const digest=hash(token);
       const r=db.prepare('SELECT id,grantId FROM workspaces WHERE bearerHash=? AND grantExpires>?').get(digest,now());
       if(r && hasSource(r.id)) return {workspace:r.id,id:r.grantId,actor:'Muse'};
-      const named=db.prepare(`SELECT id,workspace,actor FROM workspace_agents WHERE bearerHash=? AND ${activeAgent}`).get(digest,now());
-      return named ? {...named} : null;
+      const named=db.prepare(`SELECT id,workspace,actor,clientType FROM workspace_agents WHERE bearerHash=? AND ${activeAgent}`).get(digest,now());
+      if (!named) return null;
+      const {clientType,...grant}=named;
+      return clientType ? {...grant,clientType} : grant;
     }
   };
 }

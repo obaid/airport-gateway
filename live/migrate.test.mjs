@@ -28,7 +28,8 @@ test('a consistent WAL export preserves workspace bindings, active credentials, 
   f.store.attach('personal', op.attempt, 'example_account');
   f.store.activate('personal', op.attempt, email);
   f.store.setPolicy('personal', 'Allow');
-  const named = f.store.issueAgentGrant('work', 'Assistant', 'forever');
+  const invitation = f.store.issueAgentInvitation('work', 'Assistant', 'forever', 'duet');
+  const named = f.store.registerAgent(invitation.invitation);
   const muse = f.store.issueConnectorGrant('personal');
   const before = f.store.state();
   exportSnapshot(f.source, f.output);

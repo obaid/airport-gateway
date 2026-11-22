@@ -3,6 +3,13 @@
 .rg-page .rg-heading { padding:15px 19px }
 .rg-entity,.rg-request { width:100%; text-align:left }
 .rg-entity .rg-mark.native { background:#f3f4ef }
+.rg-agent-icon { display:grid; place-items:center; color:var(--muted) }
+.actor-with-icon { display:flex; align-items:center; gap:7px; min-width:0 }
+.actor-with-icon>span:last-child { min-width:0 }
+.rg-id .actor-with-icon>span:last-child { overflow:hidden; text-overflow:ellipsis }
+.agent-client-picker { display:flex; align-items:center; gap:9px }
+.agent-client-picker select { flex:1 }
+.agent-client-preview { display:grid; place-items:center; width:34px; height:34px; color:var(--muted) }
 .rg-mark img { object-fit:contain }
 .rg-chip { justify-self:start }
 .rg-page .rg-heading>span,.rg-filters label>span,.rg-endpoint>span { font-size:13px }

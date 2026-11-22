@@ -81,8 +81,8 @@ export function createCatalogActions({store,getCatalog,callbackURL}) {
     catalog:async b=>{ws(b); const page=paging(b);const p=getCatalog();return p?{...await p.listToolkits(page),source:'live'}:browseDirectory(page);},
     'connection-add':add,'connection-check':check,'connection-tools':listTools,'tool-access':access,
     'connection-remove':b=>{const c=conn(b);store.disableConnection(b.workspace,c.id);return {ok:true};},
-    'agent-add':b=>store.issueAgentGrant(ws(b),b.name,b.lifetime),
-    'agent-invite':b=>store.issueAgentInvitation(ws(b),b.name,b.lifetime),
+    'agent-add':b=>store.issueAgentGrant(ws(b),b.name,b.lifetime,b.clientType),
+    'agent-invite':b=>store.issueAgentInvitation(ws(b),b.name,b.lifetime,b.clientType),
     'agent-invite-remove':b=>{store.revokeAgentInvitation(ws(b),b.id);return {ok:true};},
     'agent-remove':b=>{store.revokeAgentGrant(ws(b),b.id);return {ok:true};}
   }));

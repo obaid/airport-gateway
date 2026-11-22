@@ -10,7 +10,7 @@ import test from 'node:test';
 import { chromium } from 'playwright-core';
 import { createHostedGateway, readHostedConfig } from '../hosted.mjs';
 
-test('a customer signs in, creates an account, switches workspaces and signs out in Chromium',async ()=>{
+test('a customer signs in, creates an account, switches workspaces and signs out in Chromium',async t=>{
   const dir=mkdtempSync(join(tmpdir(),'airport-browser-'));
   const key=join(dir,'key.pem'),cert=join(dir,'cert.pem');
   let tls,gateway,browser;
@@ -58,6 +58,67 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     await page.getByLabel('Display name').fill('Local Pilot');
     await page.getByRole('button',{name:'Create account'}).click();
     await page.getByRole('button',{name:'Account menu for Local Pilot'}).waitFor();
+    await t.test('an invited agent keeps its selected icon across the dashboard',async ()=>{
+      const nickname='Weekend planner',brand='img[src="/assets/agents/grok-bot.png"]';
+      await page.getByRole('link',{name:'Agents',exact:true}).click();
+      await page.getByRole('button',{name:'Add agent',exact:true}).click();
+      const invite=page.locator('#create-agent-invitation');
+      const name=invite.getByLabel('Agent name (optional)'),client=invite.getByLabel('Agent icon');
+      await name.fill('Lighthouse');
+      assert.equal(await invite.locator('.agent-icon-letter').textContent(),'L');
+      await name.fill('');
+      await client.selectOption('muse');
+      assert.equal(await name.inputValue(),'Personal Muse');
+      await client.selectOption('grok-bot');
+      assert.equal(await name.inputValue(),'');
+      await name.fill(nickname);
+      await invite.locator(brand).waitFor();
+      await invite.getByRole('button',{name:'Create setup prompt'}).click();
+      const prompt=await page.locator('#enrollment-prompt').inputValue();
+      const registration=prompt.match(/POST JSON to (\S+) with this body: (\{.*?\})\./);
+      assert.ok(registration,'setup prompt includes a registration URL and body');
+      await page.getByRole('button',{name:'Done',exact:true}).click();
+      await page.locator('[data-manage="inspect-agent-invite"]').filter({hasText:nickname}).locator(brand).waitFor();
+
+      const url=new URL(registration[1]);
+      const registered=await ctx.request.post('http://127.0.0.1:'+gateway.address().port+url.pathname,{
+        headers:{host:url.host},data:JSON.parse(registration[2])
+      });
+      assert.equal(registered.status(),200);
+      const credential=await registered.json();
+      const countsPath=url.pathname.replace(/\/agents\/register$/,'/api/gmail/inbox-counts');
+      const counts=await ctx.request.get('http://127.0.0.1:'+gateway.address().port+countsPath,{
+        headers:{host:url.host,authorization:'Bearer '+credential.token}
+      });
+      assert.equal(counts.status(),403);
+      await page.reload();
+      const row=page.locator('.rg-agent').filter({hasText:nickname});
+      await row.locator(brand).waitFor();
+      await row.click();
+      await page.locator('dd').filter({hasText:nickname}).locator(brand).waitFor();
+      await page.locator('.rg-request').filter({hasText:'Blocked'}).locator(brand).waitFor();
+      await page.getByRole('link',{name:'Overview',exact:true}).click();
+      await page.locator('.map-node').filter({hasText:nickname}).locator(brand).waitFor();
+      const recent=page.locator('.feed-row').filter({hasText:nickname});
+      await recent.locator(brand).waitFor();
+      assert.ok(await recent.locator(brand).evaluate(img=>img.complete && img.naturalWidth>0));
+      const trace=page.getByLabel('Trace request');
+      await trace.selectOption(await trace.locator('option').filter({hasText:'Blocked'}).getAttribute('value'));
+      await page.locator('[data-node="trace-actor"]').locator(brand).waitFor();
+      await recent.click();
+      await page.locator('.audit-actor').filter({hasText:nickname}).locator(brand).waitFor();
+
+      await page.getByRole('link',{name:'Agents',exact:true}).click();
+      await page.getByRole('button',{name:'Add agent',exact:true}).click();
+      await page.getByText('Connect with a bearer token instead').click();
+      const direct=page.locator('#named-agent');
+      await direct.getByLabel('Agent name',{exact:true}).fill('Duet');
+      await direct.getByLabel('Agent icon').selectOption('custom');
+      assert.equal(await direct.locator('.agent-icon-letter').textContent(),'D');
+      await direct.getByRole('button',{name:'Issue agent credential'}).click();
+      await page.getByRole('button',{name:'Done',exact:true}).click();
+      assert.equal(await page.locator('.rg-agent').filter({hasText:'Duet'}).locator('.agent-icon-letter').textContent(),'D');
+    });
     await page.locator('#ws-button').click();
     await page.locator('#workspace-menu').getByText('Work',{exact:true}).click();
     assert.equal(await page.locator('#workspace-name').innerText(),'Work');

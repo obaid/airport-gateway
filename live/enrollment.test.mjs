@@ -7,7 +7,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {createServer} from 'node:http';
 import {test} from 'node:test';
 import {createStore} from './store.mjs';
-import {makeAgentHandler} from './agent.mjs';
+import {makeAgentHandler,createToolRunner} from './agent.mjs';
+import agentIcons from '../dist/agent-icons.js';
 
 function setup(t) {
   const store=createStore(':memory:');
@@ -45,6 +46,40 @@ test('multiple pending invitations bind names and workspaces without storing sec
   for(const value of [pinned.invitation,free.invitation,other.invitation,a.token,b.token,c.token]) assert(!state.includes(value));
 });
 
+test('an owner-selected app follows an invitation, its credential and its recorded requests',async t=>{
+  const {store:s}=setup(t);
+  const invite=s.issueAgentInvitation('work','Research desk','7d','duet');
+  assert.equal(invite.clientType,'duet');
+  assert.equal(s.state().agentInvitations.find(i=>i.id===invite.id).clientType,'duet');
+  const {token}=s.registerAgent(invite.invitation);
+  const grant=s.authenticate(token);
+  assert.equal(grant.clientType,'duet');
+  assert.equal(s.listAgentGrants('work')[0].clientType,'duet');
+  const run=createToolRunner({store:s,getProvider:()=>assert.fail('A blocked request cannot call a provider')});
+  await run(grant,'gmail_send_email');
+  s.revokeAgentGrant('work',grant.id);
+  s.issueAgentGrant('work','Research desk','12h','custom');
+  const requests=s.state().logs.filter(row=>row.actor==='Research desk');
+  assert.deepEqual(requests.map(row=>[row.tool,row.clientType]),[['gmail_send_email','duet'],['register_agent','duet']]);
+  assert.equal(s.listAgentGrants('work')[0].clientType,'custom');
+  for (const value of ['../other.png',{},false,'']) {
+    assert.throws(()=>s.issueAgentInvitation('personal',null,'7d',value),{status:400});
+    assert.throws(()=>s.issueAgentGrant('personal','Extra','7d',value),{status:400});
+  }
+});
+
+test('agent marks support existing aliases, owner-selected apps and custom initials',()=>{
+  for (const [name,key] of [['Dot','dots'],['Ｄｏｔｓ','dots'],['GrokBot','grok-bot'],['Claude Duet','duet'],['Muse from Meta','muse']])
+    assert.equal(agentIcons.imageURL(name),'/assets/agents/'+key+'.png');
+  assert.equal(agentIcons.identify('Muse lab'),null);
+  assert.equal(agentIcons.imageURL('Research desk',{clientType:'duet'}),'/assets/agents/duet.png');
+  assert.equal(agentIcons.imageURL('Duet',{clientType:'custom'}),null);
+  assert.equal(agentIcons.imageURL('Duet',{clientType:'../../bad'}),null);
+  assert.match(agentIcons.render('  Éclair',{clientType:'custom'}),/>É<\/span>/);
+  assert.match(agentIcons.render('Atlas'),/data-tone="5"[^>]*>A</);
+  assert.doesNotMatch(agentIcons.render('<img src=x onerror=boom>'),/onerror|<img/);
+});
+
 test('expiry and per-workspace cancellation revoke invitations; last-source disconnect preserves identity',t=>{
   const {store:s,connections}=setup(t);
   const first=s.issueAgentInvitation('work'),second=s.issueAgentInvitation('work'),last=s.issueAgentInvitation('personal');
@@ -76,6 +111,7 @@ test('public registration is an exact JSON POST with no workspace override or do
   assert.match(await (await fetch(base+'/airport/connect')).text(),/https:\/\/example\.test\/private\/agents\/register/);
   assert.equal((await send({invitation:invite.invitation,workspace:'personal'})).status,400);
   assert.equal((await send({invitation:invite.invitation,lifetime:'30d'})).status,400);
+  assert.equal((await send({invitation:invite.invitation,clientType:'duet'})).status,400);
   assert.equal((await send({invitation:invite.invitation},{Origin:'https://elsewhere.test'})).status,403);
   const result=await Promise.all([0,1].map(()=>send({invitation:invite.invitation})));
   assert.deepEqual(result.map(r=>r.status).sort(),[200,403]);

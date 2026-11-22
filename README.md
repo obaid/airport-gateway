@@ -26,3 +26,9 @@ To move existing accounts, policies, activity, and agent grants to a hosted owne
 - `dist/` contains the standalone demo and the design assets shared with the live console. The demo uses sample workspaces in browser storage.
 
 Airport's Composio key belongs in the deployment's secret store. Each user authorizes their own connections through the provider's sign-in flow.
+
+## Agent artwork
+
+The agent icons identify third-party products. Artwork comes from the publishers of [Muse](https://apps.apple.com/us/app/muse-from-meta/id6760173601), [Dots](https://chatgpt.com/features/dots/), [Duet](https://apps.apple.com/us/app/claude-duet-by-anthropic/id6803276000), [Grok Bot](https://apps.apple.com/us/app/grok-bot/id6794501026) and [Instinct](https://instinct.com/).
+
+When updating an icon in `dist/agents/`, copy the same PNG to `airport-landing/public/assets/agents/` so the dashboard and landing page show the same artwork.
