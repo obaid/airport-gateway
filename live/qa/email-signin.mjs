@@ -83,7 +83,9 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     page.setDefaultTimeout(10_000);
     const errors=[];
     page.on('pageerror',err=>errors.push(err.message));
-    await page.goto(origin);
+    const personal=origin+'/w/personal',work=origin+'/w/work';
+    const githubDirectory=work+'/integrations?app=github';
+    await page.goto(githubDirectory);
     await page.getByLabel('Email address').fill('pilot@example.test');
     await page.getByRole('button',{name:'Send code'}).click();
     const code=page.getByLabel('Eight-digit code');
@@ -98,6 +100,41 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     await page.getByLabel('Display name').fill('Local Pilot');
     await page.getByRole('button',{name:'Create account'}).click();
     await page.getByRole('button',{name:'Account menu for Local Pilot'}).waitFor();
+    await page.waitForURL(githubDirectory);
+    await page.getByRole('heading',{name:'GitHub',exact:true}).first().waitFor();
+    assert.equal(await page.locator('#workspace-name').textContent(),'Work');
+
+    await t.test('workspace links open independently in two tabs and account settings are global',async ()=>{
+      const sidebar=page.getByRole('navigation',{name:'Workspace pages'});
+      const workConnections=await sidebar.getByRole('link',{name:'Connections'}).evaluate(a=>a.href);
+      assert.equal(workConnections,work+'/connections');
+
+      const workTab=await ctx.newPage();
+      try{
+        await workTab.goto(workConnections);
+        await workTab.getByRole('heading',{name:'Connections',exact:true}).waitFor();
+        await page.goto(personal+'/overview?workspace=work');
+        await page.waitForURL(personal+'/overview');
+        await page.getByRole('heading',{name:'Workspace overview',exact:true}).waitFor();
+        await workTab.reload();
+        await workTab.getByRole('heading',{name:'Connections',exact:true}).waitFor();
+        assert.equal(await workTab.locator('#workspace-name').textContent(),'Work');
+        assert.equal(await page.locator('#workspace-name').textContent(),'Personal');
+        assert.equal(page.url(),personal+'/overview');
+        assert.equal(await sidebar.getByRole('link',{name:'Connections'}).evaluate(a=>a.href),personal+'/connections');
+
+        await workTab.getByRole('button',{name:'Account menu for Local Pilot'}).click();
+        const settings=workTab.getByRole('link',{name:'Account settings',exact:true});
+        assert.equal(await settings.evaluate(a=>a.href),origin+'/account');
+        await settings.click();
+        await workTab.waitForURL(origin+'/account');
+        await workTab.goBack();
+        await workTab.waitForURL(workConnections);
+        assert.equal(await workTab.locator('#workspace-name').textContent(),'Work');
+      }finally{
+        await workTab.close();
+      }
+    });
     await t.test('an invited agent keeps its selected icon across the dashboard',async ()=>{
       const nickname='Weekend planner',brand='img[src="/assets/agents/grok-bot.png"]';
       await page.getByRole('link',{name:'Agents',exact:true}).click();
@@ -172,8 +209,15 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       await owner('connect',{expectedEmail:'pilot@example.test'});
       assert.equal((await owner('check')).status,'active');
       await owner('policy',{policy:'Allow'});
-      const toolsURL=origin+'/#connections/pilot-gmail/tools?workspace=personal';
-      const advancedURL=toolsURL.replace('/tools?','/tools/advanced?');
+      const toolsURL=personal+'/connections/pilot-gmail/tools';
+      const advancedURL=toolsURL+'/advanced';
+      await page.goto(personal+'/overview');
+      await page.getByRole('heading',{name:'Workspace overview',exact:true}).waitFor();
+      await page.goto(origin+'/#connection/pilot-gmail/tools/advanced?workspace=personal');
+      await page.waitForURL(advancedURL);
+      await searchTools.waitFor();
+      await page.goBack();
+      await page.waitForURL(personal+'/overview');
       await page.goto(toolsURL);
       await page.reload();
       const control=slug=>page.locator('[data-cp-tool="'+slug+'"]');
@@ -183,6 +227,7 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       assert.deepEqual(await page.locator('[data-access-preset]').evaluateAll(inputs=>inputs.map(input=>input.value)),
         ['read-only','write-only','read-write']);
       assert.equal(await searchTools.count(),0);
+      assert.equal(await advancedLink.evaluate(a=>a.href),advancedURL);
       await advancedLink.click();
       await page.waitForURL(advancedURL);
       await searchTools.waitFor();
@@ -225,9 +270,10 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       assert.equal(await searchTools.count(),0);
       await page.getByRole('link',{name:'Advanced tool editor',exact:true}).click();
       await searchTools.waitFor();
-      const policyURL=new URLSearchParams(page.url().split('?')[1]);
-      assert.equal(policyURL.get('workspace'),'personal');
-      assert.equal(policyURL.get('view'),'advanced');
+      assert.equal(page.url(),personal+'/policies?view=advanced');
+      await page.reload();
+      await searchTools.waitFor();
+      assert.equal(await page.locator('#workspace-name').textContent(),'Personal');
       await page.getByRole('link',{name:'Back to access presets',exact:true}).click();
       await page.getByRole('link',{name:'Advanced tool editor',exact:true}).waitFor();
       assert.equal(await searchTools.count(),0);
@@ -245,12 +291,14 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     await page.keyboard.press('Enter');
     await page.waitForFunction(()=>document.getElementById('workspace-name').textContent==='Work');
     assert.equal(await workspaceMenu.isVisible(),false);
+    assert.equal(page.url(),work+'/policies');
     await ctx.route('https://connect.composio.dev/link/ca_browser_*',route=>
       route.fulfill({contentType:'text/html',body:'<title>Provider sign-in fixture</title>'}));
     for(const returnsToAirport of [true,false]){
       const label=returnsToAirport?'GitHub callback':'GitHub closed tab';
       await t.test(label+' activates in Work without a manual check',async ()=>{
-        await page.goto(origin+'/#integrations?app=github&workspace=work');
+        await page.goto(returnsToAirport?origin+'/#catalog?app=github&workspace=work':githubDirectory);
+        await page.waitForURL(githubDirectory);
         await page.getByRole('button',{name:'Connect account',exact:true}).click();
         const form=page.locator('#toolkit-add');
         await form.getByRole('textbox').fill(label);
@@ -261,9 +309,10 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         assert.equal(added.status(),200);
         const {connectionId,url,status}=await added.json();
         assert.equal(status,'pending');
-        const settings=origin+'/#connections/'+connectionId+'/settings?workspace=work';
-        const toolsURL=settings.replace('/settings?','/tools?');
-        const advancedURL=settings.replace('/settings?','/tools/advanced?');
+        const connectionURL=work+'/connections/'+connectionId;
+        const settings=connectionURL+'/settings';
+        const toolsURL=connectionURL+'/tools';
+        const advancedURL=toolsURL+'/advanced';
         const [popup]=await Promise.all([
           ctx.waitForEvent('page'),
           page.getByRole('link',{name:/Open authorization/}).click()

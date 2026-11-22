@@ -85,7 +85,9 @@
       event.preventDefault();
       submit(async()=>{
         await post('verify',{challengeId:pending.challengeId,code:code.value});
-        remember(null); location.replace('/'+location.hash);
+        remember(null);
+        if (location.pathname === '/login') location.replace('/'+location.hash);
+        else location.reload();
       });
     });
     byId('different').addEventListener('click',()=>{

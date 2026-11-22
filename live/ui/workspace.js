@@ -328,7 +328,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function scheduleMap(){cancelAnimationFrame(graphFrame);graphFrame=requestAnimationFrame(mapRouteLines);}
   function goLink(path,contents,classes='',extra=''){
-    return `<a href="${esc(hrefFor(path))}" data-route="${esc(path)}" class="${classes}" ${extra}>${contents}</a>`;
+    return `<a href="${esc(hrefFor(path))}" class="${classes}" ${extra}>${contents}</a>`;
   }
   function graph(w,objects){
     if(graphWorkspace!==w.id){graphWorkspace=w.id;traceId='';}
@@ -381,36 +381,54 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   let mountedKey='',mountedWorkspace='',mountedCatalog=null,mountedModule=null,componentSignature='',requestedAudit='';
   const panelIds=['gate-map','workspace-summary','overview-feed','connections','agents','module-page','mail','muse','permissions','audit'];
 
-  function parseRoute(hash=location.hash){
-    const source=String(hash).replace(/^#/,'');
+  function browserRoute(){
+    // Older bookmarks put the entire console route, including its query, after /#.
+    if(location.pathname==='/' && location.hash)return location.hash;
+    return location.pathname+location.search;
+  }
+  function parseRoute(target=browserRoute()){
+    const legacy=target.startsWith('#');
+    const source=target.replace(/^[#/]/,'');
     const split=source.indexOf('?');
     const path=split<0?source:source.slice(0,split);
     const query=new URLSearchParams(split<0?'':source.slice(split+1));
     const segments=path.split('/').map(value=>{try{return decodeURIComponent(value);}catch{return '';}});
+    let workspace='';
+    if(!legacy && segments[0]==='w'){
+      segments.shift();
+      workspace=segments.shift()||'';
+    }else if(legacy || !path)workspace=query.get('workspace')||'';
+    query.delete('workspace');
     let [page,id='',tab='']=segments;
     const alias={main:'overview',catalog:'integrations',permissions:'policies',audit:'activity',mail:'connections',muse:'agents',connection:'connections'};
     if(page==='mail'){id='pilot-gmail';tab='settings';}
     if(page==='muse')id='muse';
-    page=alias[page]||page||'overview';
+    page=Object.hasOwn(alias,page)?alias[page]:page||'overview';
     if(page==='connections' && id&&!['settings','tools','activity'].includes(tab))tab='tools';
     const detail=page==='connections'&&id&&tab==='tools'&&segments[3]==='advanced'?'advanced':'';
-    return {page,id,tab,detail,query};
+    return {workspace,page,id,tab,detail,query};
   }
-  function hrefFor(hash,workspace=workspaceId){
-    const r=parseRoute(hash);
-    if(workspace)r.query.set('workspace',workspace);
+  function routePath(r,workspace){
     const segments=[r.page,r.id,r.tab,r.detail].filter(Boolean).map(encodeURIComponent);
-    return '#'+segments.join('/')+(r.query.size?'?'+r.query:'');
+    const path=r.page==='account'?'/account':'/w/'+encodeURIComponent(workspace)+'/'+segments.join('/');
+    return path+(r.query.size?'?'+r.query:'');
   }
-  function navigate(hash,workspace=workspaceId,replace=false){
-    const href=hrefFor(hash,workspace);
-    if(location.hash!==href) history[replace?'replaceState':'pushState'](null,'',href);
-    if(current() || state?.workspaces?.length)render();
+  function hrefFor(target,workspace){
+    const r=parseRoute(target);
+    return routePath(r,workspace||r.workspace||workspaceId);
+  }
+  function navigate(target,workspace){
+    const href=hrefFor(target,workspace);
+    if(href!==location.pathname+location.search+location.hash){
+      // The global account page can return to the originating workspace even after reload.
+      const entry=href==='/account'?{workspace:workspaceId}:null;
+      history.pushState(entry,'',href);
+    }
+    if(state?.workspaces?.length)render();
   }
   function resetPage(){
     graphObserver?.disconnect();cancelAnimationFrame(graphFrame);closeDialog();
     window.AirportAccount?.unmount();
-    mountedModule?.links?.disconnect();
     mountedModule=null;componentSignature='';requestedAudit='';
     for(const id of panelIds){const el=$('#'+id);el.hidden=true;el.replaceChildren();regions.delete(id);}
     delete $('#audit').dataset.workspace;
@@ -455,7 +473,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const row=(logo,name,sub,status,action,id,label='Manage',path)=>{
       const detail=path||{muse:'#agents/muse','agent-info':'#agents/'+encodeURIComponent(id||'')}[action];
       const content=`<span class="registry-mark">${logo}</span><span class="registry-name"><strong>${esc(name)}</strong><small>${esc(sub)}</small></span><span class="registry-tag">${esc(status)}</span><span class="row-link">${icon('chevron-right',17)}</span>`;
-      if(detail)return `<a class="registry-row" href="${esc(hrefFor(detail))}" data-route="${esc(detail)}" data-id="${esc(id||'')}" aria-label="${esc(label+' '+name)}">${content}</a>`;
+      if(detail)return `<a class="registry-row" href="${esc(hrefFor(detail))}" data-id="${esc(id||'')}" aria-label="${esc(label+' '+name)}">${content}</a>`;
       return `<button class="registry-row" type="button" data-manage="${esc(action)}" data-id="${esc(id||'')}" aria-label="${esc(label+' '+name)}">${content}</button>`;
     };
     if(kind==='connections'){
@@ -503,7 +521,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     document.title=title+' · '+w.name+' · Airport';
     $('#crumb').textContent=w.name;$('#crumb').title='Switch workspace';
     const connectionTab=r.detail==='advanced'?'Advanced tools':r.tab==='tools'?'Access presets':prettyName(r.tab);
-    $('#crumb-section').innerHTML=section&&r.id?`<a data-route="#${r.page}" href="${esc(hrefFor('#'+r.page))}">${esc(section.name)}</a><b>/</b><span>${esc(r.page==='connections'?connectionTab:r.page==='activity'?'Request':r.page==='agents'?title:'Workspace policy')}</span>`:esc(section?.name||'Page');
+    $('#crumb-section').innerHTML=section&&r.id?`<a href="${esc(hrefFor('#'+r.page))}">${esc(section.name)}</a><b>/</b><span>${esc(r.page==='connections'?connectionTab:r.page==='activity'?'Request':r.page==='agents'?title:'Workspace policy')}</span>`:esc(section?.name||'Page');
     if(r.page==='account'){
       $('#crumb').textContent='Airport';$('#crumb').title='Return to workspace overview';
       document.title='Account settings · Airport';
@@ -541,21 +559,14 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(!mountedModule){
       const root=document.createElement('div');root.className='feature-page';
       host.replaceChildren(root);
-      const updateLinks=()=>{
-        for(const anchor of root.querySelectorAll('a[href^="#"]')){
-          const fragment=anchor.getAttribute('href');
-          if(sections[parseRoute(fragment).page])anchor.href=hrefFor(fragment,w.id);
-        }
-      };
-      const observer=new MutationObserver(updateLinks);
-      observer.observe(root,{childList:true,subtree:true});
-      mountedModule={root,links:observer};
+      mountedModule={root};
     }
     const entry=mountedModule,identity=mountedKey;
     const isCurrent=()=>!terminal&&workspaceId===w.id&&mountedKey===identity&&rootAttached();
     const rootAttached=()=>entry.root.isConnected;
     const guarded=fn=>(...args)=>{if(isCurrent())return fn(...args);};
-    const ctx={workspace:w,state,route:r,connectionPath,icon,logo:mark,mark,agentLogo,requestLogo,invitationLogo,escape:esc,isCurrent,agentEndpoint,describeGrant,
+    const ctx={workspace:w,state,route:r,icon,logo:mark,mark,agentLogo,requestLogo,invitationLogo,escape:esc,isCurrent,agentEndpoint,describeGrant,
+      href:target=>hrefFor(target,w.id),connectionPath:(id,status)=>hrefFor(connectionPath(id,status),w.id),
       auditEntry:entry=>entry.workspace===w.id?auditEntry(w,entry,true):'',
       navigate:guarded(navigate),toast:guarded(message),refresh:guarded(refresh),
       request:(path,data)=>isCurrent()?request(path,data):Promise.reject(new Error('This workspace view has closed.')),
@@ -641,7 +652,9 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   function dismissRail(focus=false){drawer=false;workspaceMenu=false;updateRail(focus);}
   function selectWorkspace(id){
     if(!state?.workspaces?.some(w=>w.id===id))return;
-    testResult=null;message('');closeDialog();dismissRail();navigate('#'+parseRoute().page,id);
+    testResult=null;message('');closeDialog();dismissRail();
+    const page=parseRoute().page;
+    navigate('#'+(Object.hasOwn(sections,page)&&page!=='account'?page:'overview'),id);
   }
   function renderWorkspaceMenu(w){
     const key=[w.id,state.workspaces.map(s=>[s.id,s.name]),supportsCatalog()];
@@ -701,14 +714,21 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   });
   function render(){
     if(!state?.workspaces?.length){network('The gateway has no available workspaces.');return;}
-    const r=parseRoute(),wanted=r.query.get('workspace');
+    const r=parseRoute();
+    const wanted=r.workspace || (r.page==='account'?history.state?.workspace:'');
     if(wanted&&state.workspaces.some(w=>w.id===wanted))workspaceId=wanted;
     if(!current())workspaceId=state.workspaces[0].id;
     const w=current(),missing=Boolean(wanted&&!state.workspaces.some(item=>item.id===wanted));
     const autoAdd=!missing&&supportsCatalog()&&r.page==='agents'&&!r.id&&r.query.get('add')==='1';
-    if(autoAdd){r.query.delete('add');history.replaceState(null,'',hrefFor('#agents?'+r.query,w.id));}
-    const key=missing?location.hash:hrefFor(location.hash,w.id);
-    if(key!==location.hash)history.replaceState(null,'',key);
+    if(autoAdd)r.query.delete('add');
+    const url=location.pathname+location.search+location.hash;
+    // Only migrate recognized dashboard routes. An unrelated fragment may be private,
+    // and dot segments in a legacy bookmark would change meaning in a pathname.
+    const routable=Object.hasOwn(sections,r.page)&&[r.id,r.tab].every(segment=>segment!=='.'&&segment!=='..');
+    const key=missing||!routable?url:routePath(r,w.id);
+    if(key!==url || (r.page==='account'&&!missing&&history.state?.workspace!==w.id)){
+      history.replaceState(r.page==='account'?{workspace:w.id}:null,'',key);
+    }
     const changed=key!==mountedKey||w.id!==mountedWorkspace||mountedCatalog!==state.catalogVersion;
     if(w.id!==mountedWorkspace)returningToConsole=true;
     if(key!==mountedKey && r.page==='connections' && r.tab==='settings'){
@@ -764,7 +784,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     // should open access setup. Leave visits to other pages or dialogs alone.
     const route=parseRoute(),w=current();
     const watching=w&&route.page==='connections'&&route.tab==='settings'&&!dialog.open&&
-      (!route.query.has('workspace')||route.query.get('workspace')===w.id)&&
+      (!route.workspace||route.workspace===w.id)&&
       (route.id==='pilot-gmail'?w:knownConnection(w,route.id))?.status==='pending';
     state=result;network('');
     if(watching&&supportsCatalog()&&current()){
@@ -1132,8 +1152,12 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(workspaceMenu&&!e.target.closest('.ws-wrap')){workspaceMenu=false;updateRail();}
     const skip=e.target.closest('.skip');
     if(skip){e.preventDefault();$('#main').focus();return;}
-    const link=e.target.closest('a[data-nav],a[data-route]');
-    if(link && !e.defaultPrevented && !e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!e.altKey){e.preventDefault();dismissRail();navigate(link.dataset.route||'#'+link.dataset.nav);return;}
+    const link=e.target.closest('a[href]');
+    const plainClick=e.button===0&&!e.defaultPrevented&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!e.altKey;
+    if(link && plainClick && !link.hasAttribute('download') && (!link.target||link.target==='_self') &&
+      link.origin===location.origin && !link.hash && (link.pathname.startsWith('/w/')||link.pathname==='/account')){
+      e.preventDefault();dismissRail();navigate(link.pathname+link.search);return;
+    }
     const control=e.target.closest('[data-manage]');
     if(control){if(control.dataset.manage==='workspace')dismissRail();appManagement(control.dataset.manage,control.dataset.id,control);return;}
     if(e.target.closest('[data-close]'))closeDialog();

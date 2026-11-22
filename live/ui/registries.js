@@ -43,7 +43,7 @@
       const mode={'read-only':'Read only','write-only':'Write only','read-write':'Read and write',custom:'Custom'}[c.accessMode];
       const meta=c.status==='active' ? `<strong${needsAccess?' class="rg-setup"':''}>${needsAccess?'Set up agent access':mode||'Connected'}</strong><small>${needsAccess?'Connected · 0 tools':allowed+' tool'+(allowed===1?'':'s')+' allowed'}</small>` : `<strong>${esc(state)}</strong><small>Account status</small>`;
       const label=c.label||toolkitName(c.toolkit), path=ctx.connectionPath(c.id,c.status);
-      return `<a class="entity-row rg-entity rg-account" href="${path}">${mark(ctx,c.toolkit)}<span class="entity-id rg-id"><strong>${esc(toolkitName(c.toolkit))}</strong><small>${esc(label)}</small></span>
+      return `<a class="entity-row rg-entity rg-account" href="${esc(path)}">${mark(ctx,c.toolkit)}<span class="entity-id rg-id"><strong>${esc(toolkitName(c.toolkit))}</strong><small>${esc(label)}</small></span>
         <span class="entity-meta rg-meta">${meta}</span><span class="entity-meta rg-meta" title="Requests in this workspace’s retained activity"><strong>${count}</strong><small>logged request${count===1?'':'s'}</small></span>${icon('chevron-right',16)}</a>`;
     }
     const current=list.filter(c=>c.status!=='disabled'),retired=list.filter(c=>c.status==='disabled');
@@ -72,7 +72,7 @@
     v.el.querySelector('[data-rg-count]').textContent=String(rows.length);
     host.innerHTML=rows.map(r=>{
       const service=recordService(r);
-      return `<a class="request-row rg-request" href="#activity/${enc(r.id)}"><span class="entity-id rg-id"><strong>${esc(operation(r))}</strong><small class="actor-with-icon">${ctx.requestLogo(r,16)}<span>${esc(r.actor||'Unknown')} → ${esc(service)}</span></small></span>
+      return `<a class="request-row rg-request" href="${esc(ctx.href('activity/'+enc(r.id)))}"><span class="entity-id rg-id"><strong>${esc(operation(r))}</strong><small class="actor-with-icon">${ctx.requestLogo(r,16)}<span>${esc(r.actor||'Unknown')} → ${esc(service)}</span></small></span>
         ${chip(ctx,r.outcome||'Unknown',statusTone(r.outcome))}<time datetime="${esc(r.at)}">${esc(time(r.at))}</time>${icon('chevron-right',15)}</a>`;
     }).join('')||empty(ctx,'No matching requests','Try another search or decision.');
   }
@@ -83,7 +83,7 @@
     if(w.grant||pairing)agents.unshift({id:'muse',clientType:'muse',label:'Muse',status:w.grant?'Paired':'Pairing',sub:'Saved connector'});
     const rows=agents.map(a=>{
       const last=logs.find(log=>log.actor===a.label);
-      return `<a class="entity-row agent-row rg-entity rg-agent" href="#agents/${enc(a.id)}"><span class="rg-agent-icon">${ctx.agentLogo(a.label,34,a.clientType)}</span><span class="entity-id rg-id"><strong>${esc(a.label)}</strong><small>${esc(a.sub)}</small></span>
+      return `<a class="entity-row agent-row rg-entity rg-agent" href="${esc(ctx.href('agents/'+enc(a.id)))}"><span class="rg-agent-icon">${ctx.agentLogo(a.label,34,a.clientType)}</span><span class="entity-id rg-id"><strong>${esc(a.label)}</strong><small>${esc(a.sub)}</small></span>
         <span class="entity-meta rg-meta"><strong>${last?esc(time(last.at)):'No requests'}</strong><small>Last request</small></span>${chip(ctx,a.status,a.status==='Pairing'?'ask':'allow')}${icon('chevron-right',16)}</a>`;
     }).join('');
     const invitations=scoped(ctx.state.agentInvitations,ctx);

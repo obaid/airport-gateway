@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { createRemoteJWKSet, customFetch, jwtVerify } from 'jose';
 import { createComposio } from './composio.mjs';
 import { createCatalog, parseProjectAuthConfigs } from './catalog.mjs';
-import { body as readOwnerBody, connectionHomeURL, createOwnerHandler, serveBrandAsset, serveOwnerAsset } from './owner.mjs';
+import { body as readOwnerBody, connectionHomeURL, createOwnerHandler, isConsolePage, serveBrandAsset, serveOwnerAsset } from './owner.mjs';
 import { createToolRunner, makeAgentHandler } from './agent.mjs';
 import { canonicalEmail, createAccounts } from './accounts.mjs';
 import { createCodeSender, createEmailAuth, readEmailConfig, requestAddress } from './email-auth.mjs';
@@ -283,9 +283,11 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
       if (await serveBrandAsset(req,res,target)) return;
       if(target==='/welcome' && ['GET','HEAD'].includes(req.method))return await servePublicPage(req,res,'welcome');
       if(emailAuth && target.startsWith('/api/auth/')) return await authAPI(req,res,target);
+      const consolePage=isConsolePage(target.split('?',1)[0]);
       const person = await identity(req);
       if(emailAuth && !person && ['GET','HEAD'].includes(req.method)) {
-        if(target==='/login')return await servePublicPage(req,res,'login');
+        // Sign in at the bookmarked address. Reloading it after verification opens the console.
+        if(target==='/login' || consolePage)return await servePublicPage(req,res,'login');
         if(target==='/')return res.writeHead(303,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',Location:'/login'}).end();
       }
       if (!person) return errorResponse(res,401);
@@ -293,7 +295,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
         res.writeHead(303,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',Location:'/'}).end();
         return;
       }
-      if(await serveOwnerAsset(req,res,target))return;
+      if(await serveOwnerAsset(req,res,consolePage?'/':target))return;
       const tenant=person.tenant;
       const legacyFile=join(dir,tenant+'.sqlite3');
       const account=accounts.resolve(person,lstatSync(legacyFile,{throwIfNoEntry:false})?.isFile()===true);

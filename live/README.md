@@ -4,6 +4,8 @@ Airport connects agents to a workspace’s apps through Composio. Each workspace
 
 ## Using a workspace
 
+Each console link includes its workspace in the path. For example, `/w/work/connections` opens Work’s connections, and `/w/personal/activity` opens Personal’s activity. You can bookmark either or keep both open in separate tabs. Account settings are at `/account`.
+
 1. Create or select a workspace. Choose **Add app** to browse the Composio catalog. Select the app, name the account, and complete its sign-in flow. Airport verifies the provider account before marking the connection active.
 2. A verified connection opens on **Tool access**. Choose **Read only**, **Write only**, or **Read and write**, review what the preset would change, and apply it. Each preset grants the eligible versions in its preview. Under **Advanced**, choose **Customize individual tools** to make exceptions or review destructive and unclassified operations. You can block an approved tool even if Composio is unavailable.
 3. Open **Agents → Add agent**. Choose a name or let the agent choose one, then set access to 12 hours, 7 days, 30 days, or **Never expires**. An agent with **Never expires** keeps its credential until you revoke it. Copy the setup prompt into the agent within the invitation’s 10-minute claim window. Airport binds the returned bearer to this agent and workspace. Clients with a secure bearer field can use a directly issued credential. A new workspace can enroll agents before connecting an app.

@@ -27,7 +27,17 @@ const assets=new Map([
 function json(res,status,data,extras={}) {res.writeHead(status,{...headers,'Content-Type':'application/json; charset=utf-8',...extras});res.end(JSON.stringify(data));}
 export function connectionHomeURL(workspace,id,status) {
   const tab=status==='active'?'tools':'settings';
-  return '/#connections/'+encodeURIComponent(id)+'/'+tab+'?workspace='+encodeURIComponent(workspace);
+  return '/w/'+encodeURIComponent(workspace)+'/connections/'+encodeURIComponent(id)+'/'+tab;
+}
+export function isConsolePage(pathname) {
+  const path=pathname.replace(/\/$/,'');
+  if(path==='/account')return true;
+  const match=/^\/w\/[\w-]+(?:\/(.+))?$/.exec(path);
+  if(!match)return false;
+  const page=match[1]||'overview';
+  if(page==='overview')return true;
+  if(/^(?:agents|integrations|policies|activity)(?:\/[\w-]+)?$/.test(page))return true;
+  return /^connections(?:\/[\w-]+(?:\/(?:settings|activity|tools(?:\/advanced)?))?)?$/.test(page);
 }
 export function serveBrandAsset(req,res,pathname) {
   return publicBrandAssets.has(pathname) && serveOwnerAsset(req,res,pathname);
@@ -96,6 +106,7 @@ export function createOwnerHandler({store,requireOwner,ownerOrigin,publicBase,lo
         return json(res,200,{ok:true},await establishSession(b));
       }
       await requireOwner(req);
+      if(isConsolePage(p) && await serveOwnerAsset(req,res,'/'))return;
       if(req.method==='GET'&&p==='/api/state')return json(res,200,{ready:!!getProvider(),providerManaged:true,publicURL,localMcpURL,catalogVersion:1,...store.state()});
       if(req.method!=='POST')fail('Unknown route.',404);
       const b=await body(req,ownerOrigin);

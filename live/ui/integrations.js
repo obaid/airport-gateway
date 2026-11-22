@@ -4,7 +4,6 @@
   const published=Object.values(directory.apps).sort((a,b)=>a.name.localeCompare(b.name)||a.slug.localeCompare(b.slug));
   const pageSize=24;
   const schemes={API_KEY:'API key',OAUTH2:'OAuth',OAUTH1:'OAuth 1',BASIC:'Basic auth',BASIC_AUTH:'Basic auth',BEARER_TOKEN:'Bearer token',DCR_OAUTH:'Dynamic OAuth',NO_AUTH:'No sign-in'};
-  const link=slug=>'#integrations?app='+encodeURIComponent(slug);
   function auth(item){
     if(item.requiresAuth===false || item.authSchemes?.includes('NO_AUTH'))return 'No sign-in';
     if(item.managedAuthSchemes?.includes('OAUTH2')||item.managedAuth)return 'Managed OAuth';
@@ -21,7 +20,7 @@
   };
   function card(ctx,a){
     const metadata=[Number.isFinite(a.toolsCount)?a.toolsCount.toLocaleString()+(a.toolsCount===1?' tool':' tools'):'',auth(a)].filter(Boolean).join(' · ');
-    return `<a class="dir-card" href="${link(a.slug)}">${mark(ctx,a)}<span><strong>${ctx.escape(a.name||a.slug)}</strong><small>${ctx.escape(metadata)}</small></span>${ctx.icon('chevron-right',14)}</a>`;
+    return `<a class="dir-card" href="${ctx.escape(ctx.href('integrations?app='+encodeURIComponent(a.slug)))}">${mark(ctx,a)}<span><strong>${ctx.escape(a.name||a.slug)}</strong><small>${ctx.escape(metadata)}</small></span>${ctx.icon('chevron-right',14)}</a>`;
   }
   function select(ctx,key,label,choices,value) {
     const {escape:e}=ctx;
@@ -147,7 +146,7 @@
           const hasInboxCounts=c.id==='pilot-gmail'&&ctx.workspace.policy==='Allow';
           const needsAccess=!hasInboxCounts&&!c.accessMode&&!(c.tools||[]).some(t=>t.allowed||t.enabled);
           const status=c.status==='active'?(needsAccess?'Connected · Set up access':'Connected'):c.status==='pending'?'Awaiting sign-in':'Address mismatch';
-          return `<a class="linked-account" href="${ctx.connectionPath(c.id,c.status)}"><span>${esc(c.label||a.name)}</span><span class="int-status">${status}</span>${icon('chevron-right',14)}</a>`;
+          return `<a class="linked-account" href="${esc(ctx.connectionPath(c.id,c.status))}"><span>${esc(c.label||a.name)}</span><span class="int-status">${status}</span>${icon('chevron-right',14)}</a>`;
         }).join('')||'<p class="empty">No accounts connected.</p>'}</section></div>`;
       el.onclick=e=>{if(live&&current()&&e.target.closest('[data-connect-integration]'))ctx.connectToolkit(a);};
     }
@@ -165,7 +164,7 @@
         if(!cursor||seen.has(cursor))break;
         seen.add(cursor);
       }while(cursor);
-      el.innerHTML='<div class="panel empty"><strong>Integration unavailable</strong><p>This app is unavailable in the current project catalog.</p><a class="button" href="#integrations">All integrations</a></div>';
+      el.innerHTML=`<div class="panel empty"><strong>Integration unavailable</strong><p>This app is unavailable in the current project catalog.</p><a class="button" href="${ctx.escape(ctx.href('integrations'))}">All integrations</a></div>`;
     }catch{
       if(current()){el.innerHTML='<div class="panel empty"><strong>The live catalog could not be reached.</strong><p>Retry to check this integration.</p><button class="button" data-int-retry>Retry</button></div>';el.querySelector('[data-int-retry]').onclick=()=>detail(v,slug);}
     }

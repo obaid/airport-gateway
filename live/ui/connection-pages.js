@@ -14,7 +14,7 @@
   const appName=c=>window.AirportDiscovery?.apps?.[c.toolkit]?.name||(c.toolkit==='gmail'?'Gmail':title(c.toolkit));
   const count=(n,s)=>n+' '+s+(n===1?'':'s');
   const stamp=v=>{const d=new Date(v);return Number.isNaN(d.getTime())?'':d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});};
-  const route=(id,tab)=>'#connections/'+encodeURIComponent(id)+'/'+tab;
+  const connectionHref=(ctx,id,tab)=>esc(ctx.href('connections/'+encodeURIComponent(id)+'/'+tab));
   const action=(key,text,kind='',disabled=false)=>`<button type="button" data-cp="${esc(key)}" class="button ${kind}" ${disabled?'disabled':''}>${esc(text)}</button>`;
   function live(v){return mounts.get(v.el)===v && v.el.isConnected && v.ctx.isCurrent();}
   function pins(v){return new Map((v.c?.tools||[]).filter(t=>t.allowed||t.enabled).map(t=>[t.slug,t]));}
@@ -90,7 +90,7 @@
   }
   function identity(v){
     const c=v.c;
-    return `<nav class="cp-tabs section-tabs" aria-label="Connection sections">${tabs.map(t=>`<a href="${route(c.id,t)}" ${t===v.tab?'aria-current="page"':''}>${t==='tools'?'Tool access':esc(title(t))}</a>`).join('')}</nav>`;
+    return `<nav class="cp-tabs section-tabs" aria-label="Connection sections">${tabs.map(t=>`<a href="${connectionHref(v.ctx,c.id,t)}" ${t===v.tab?'aria-current="page"':''}>${t==='tools'?'Tool access':esc(title(t))}</a>`).join('')}</nav>`;
   }
   function currentMode(v){
     return Object.hasOwn(accessModes,v.c.accessMode)?v.c.accessMode:pins(v).size?'custom':null;
@@ -98,15 +98,15 @@
   function accessSection(v){
     const c=v.c,allowed=pins(v).size,mode=currentMode(v),workspace=esc(v.ctx.workspace.name);
     if(c.pilot&&c.status==='active'&&!catalogId(c)){
-      return `<section class="cp-panel cp-empty"><h3>Airport inbox counts</h3><p>The inbox counter is ${v.ctx.workspace.policy==='Allow'?'allowed':'blocked'} in ${workspace}.</p><a class="button minor" href="${route(v.id,'tools/advanced')}">Customize individual tools</a></section>`;
+      return `<section class="cp-panel cp-empty"><h3>Airport inbox counts</h3><p>The inbox counter is ${v.ctx.workspace.policy==='Allow'?'allowed':'blocked'} in ${workspace}.</p><a class="button minor" href="${connectionHref(v.ctx,v.id,'tools/advanced')}">Customize individual tools</a></section>`;
     }
     if(c.status!=='active'){
-      return `<section class="cp-panel cp-empty"><h3>Tool access</h3><p>Verify the connection to choose access for agents in ${workspace}.</p><a class="button minor" href="${route(v.id,'settings')}">Connection settings</a></section>`;
+      return `<section class="cp-panel cp-empty"><h3>Tool access</h3><p>Verify the connection to choose access for agents in ${workspace}.</p><a class="button minor" href="${connectionHref(v.ctx,v.id,'settings')}">Connection settings</a></section>`;
     }
     const choice=v.accessChoice,preview=v.accessPreview,selection=preview?.presets?.[choice];
     const counter=c.pilot?`<span class="cp-counter-summary">Airport inbox counts ${v.ctx.workspace.policy==='Allow'?'allowed':'blocked'} separately</span>`:'';
     const summary=mode?`${accessModes[mode].name} · ${count(allowed,c.pilot?'catalog tool':'tool')} allowed`:`No preset applied · ${count(allowed,c.pilot?'catalog tool':'tool')} allowed`;
-    const toolsLink=`<a class="cp-text-link" href="${route(v.id,'tools/advanced')}">Customize individual tools ${v.ctx.icon('chevron-right',14)}</a>`;
+    const toolsLink=`<a class="cp-text-link" href="${connectionHref(v.ctx,v.id,'tools/advanced')}">Customize individual tools ${v.ctx.icon('chevron-right',14)}</a>`;
     const message=v.accessMessage?`<p class="cp-access-message" role="status">${esc(v.accessMessage)}</p>`:'';
     const head=`<div class="cp-access-head"><span class="cp-access-mark">${v.ctx.icon('policies',22)}</span><div><h3>Access presets</h3><p>Choose what agents in ${workspace} can do with this ${esc(appName(c))} account.</p></div></div>
       <p class="cp-current-access"><span>Current access</span><strong>${summary}</strong>${counter}</p>`;
@@ -178,7 +178,7 @@
     const c=v.c,active=c.status==='active',pending=c.status==='pending',gone=!active&&!pending;
     if(c.pilot)return ''; // The workspace shell renders the original Gmail account settings.
     const status={active:'Connected',pending:'Awaiting sign-in',disabled:'Disconnected'}[c.status]||title(c.status);
-    const next=gone?`<a class="button primary" href="#integrations?app=${encodeURIComponent(c.toolkit)}">Connect another account</a>`:action('check',v.checking?'Checking…':pending?'Check sign-in':'Check connection','minor',v.checking);
+    const next=gone?`<a class="button primary" href="${esc(v.ctx.href('integrations?app='+encodeURIComponent(c.toolkit)))}">Connect another account</a>`:action('check',v.checking?'Checking…':pending?'Check sign-in':'Check connection','minor',v.checking);
     return `<section class="cp-panel setting-panel"><div class="cp-section-head"><h3>Account settings</h3></div><div class="cp-settings-form">
       <div class="cp-field"><span>Account label</span><strong class="cp-label-value">${esc(c.label)}</strong></div>
       <dl class="cp-facts"><div><dt>Workspace</dt><dd>${esc(v.ctx.workspace.name)}</dd></div><div><dt>Connection type</dt><dd>Composio · ${esc(appName(c))}</dd></div><div><dt>Status</dt><dd>${esc(status)}</dd></div></dl>
@@ -199,7 +199,7 @@
       <section class="cp-panel"><div class="cp-section-head"><h3>Requests</h3><span>${shown.length}</span></div><div class="cp-feed">${shown.map(l=>{
         const slug=l.exchange?.request?.operation?.slug||l.tool,op=(c.tools||[]).find(t=>t.slug===slug||t.mcpName===slug);
         const name=op?.name||slug.replace(/^gmail_/i,'').replace(/_/g,' ').toLowerCase();
-        return `<a class="cp-request request-row" href="#activity/${encodeURIComponent(l.id)}"><span><strong>${esc(title(name))}</strong><small>${esc(l.actor)} → ${esc(appName(c))}</small></span><span class="cp-outcome" data-tone="${l.outcome==='Allowed'?'allow':l.outcome==='Blocked'?'block':'neutral'}">${esc(l.outcome)}</span><time>${esc(stamp(l.at))}</time>${v.ctx.icon('chevron-right',15)}</a>`;
+        return `<a class="cp-request request-row" href="${esc(v.ctx.href('activity/'+encodeURIComponent(l.id)))}"><span><strong>${esc(title(name))}</strong><small>${esc(l.actor)} → ${esc(appName(c))}</small></span><span class="cp-outcome" data-tone="${l.outcome==='Allowed'?'allow':l.outcome==='Blocked'?'block':'neutral'}">${esc(l.outcome)}</span><time>${esc(stamp(l.at))}</time>${v.ctx.icon('chevron-right',15)}</a>`;
       }).join('')||'<p class="cp-empty">No matching requests. Try another search or decision.</p>'}</div></section>`;
   }
   function inboxCounter(v){
@@ -242,11 +242,11 @@
     const totals=Number.isInteger(v.total)&&v.filter==='all'?`${count(v.total,scope)} · ${allowed} allowed`:count(allowed,'allowed tool');
     const counter=v.c.pilot?`<section class="cp-panel" data-pilot-access>${toolRow(v,inboxCounter(v))}</section>`:'';
     const actions=v.group?'':saveBar(pending,v.saveLock);
-    if(v.c.pilot&&!catalogId(v.c))return `${actions}${counter}<section class="cp-panel cp-empty"><h3>Composio Gmail tools</h3><p>Verify the Gmail account to manage its catalog tools.</p><a class="button minor" href="${route(v.id,'settings')}">Gmail settings</a></section>`;
+    if(v.c.pilot&&!catalogId(v.c))return `${actions}${counter}<section class="cp-panel cp-empty"><h3>Composio Gmail tools</h3><p>Verify the Gmail account to manage its catalog tools.</p><a class="button minor" href="${connectionHref(v.ctx,v.id,'settings')}">Gmail settings</a></section>`;
     return `${actions}${counter}<section class="cp-panel cp-editor perm-group"><div class="cp-section-head">${v.group?
-      `<div class="cp-bare">${v.ctx.logo(v.c.toolkit,26)}<div><h3>${esc(appName(v.c))}</h3><p>${esc(v.c.label)}</p></div></div><a class="cp-text-link" href="${route(v.c.id,'tools/advanced')}">Account tools ${v.ctx.icon('chevron-right',14)}</a>`:
+      `<div class="cp-bare">${v.ctx.logo(v.c.toolkit,26)}<div><h3>${esc(appName(v.c))}</h3><p>${esc(v.c.label)}</p></div></div><a class="cp-text-link" href="${connectionHref(v.ctx,v.c.id,'tools/advanced')}">Account tools ${v.ctx.icon('chevron-right',14)}</a>`:
       `<h3>${v.c.pilot?'Composio Gmail tools':'Tool permissions'}</h3><span>${totals}</span>`}</div>
-      ${active?`<div class="cp-editor-guide"><span>${v.c.pilot?'Choose the tools agents can use with this Google account. Google’s permissions also apply.':'Allow or block individual tools for this account.'}</span><a class="cp-text-link" href="${route(v.id,'tools')}">Access presets ${v.ctx.icon('chevron-right',14)}</a></div>`:''}
+      ${active?`<div class="cp-editor-guide"><span>${v.c.pilot?'Choose the tools agents can use with this Google account. Google’s permissions also apply.':'Allow or block individual tools for this account.'}</span><a class="cp-text-link" href="${connectionHref(v.ctx,v.id,'tools')}">Access presets ${v.ctx.icon('chevron-right',14)}</a></div>`:''}
       <div class="cp-toolbar"><form data-cp-search role="search"><span aria-hidden="true">${v.ctx.icon('search',17)}</span><input data-cp-query aria-label="Search tools" name="search" type="search" placeholder="Search tools" value="${esc(v.input??v.search)}" maxlength="200"></form>
       <label><span class="cp-sr">Filter by access</span><select data-cp-filter>${[['all','All tools'],['allowed','Allowed'],['blocked','Blocked']].map(([k,n])=>`<option value="${k}" ${k===v.filter?'selected':''}>${n}</option>`).join('')}</select></label></div>
       ${v.error?`<div class="cp-warning" role="alert">${esc(v.error)} ${action('retry','Retry','minor')}<small>Existing permissions can still be blocked.</small></div>`:''}
@@ -259,7 +259,7 @@
     const focused=v.el.contains(document.activeElement)?document.activeElement:null;
     const token=focused && [...focused.attributes].find(a=>a.name.startsWith('data-cp-')||a.name.startsWith('data-access-'));
     const cursor=focused?.matches('[data-cp-query],[data-cp-logsearch]')?[focused.selectionStart,focused.selectionEnd]:null;
-    if(!v.c){v.el.innerHTML=`<div class="cp-panel cp-empty"><h3>${v.ctx.route.id?'Connection unavailable':'Choose an app to manage its tools'}</h3><p>${v.ctx.route.id?'This connection is unavailable in the current workspace.':'Connect an account to set its tool permissions.'}</p><a class="button" href="${v.ctx.route.id?'#connections':'#integrations'}">${v.ctx.route.id?'View connections':'Browse apps'}</a></div>`;return;}
+    if(!v.c){v.el.innerHTML=`<div class="cp-panel cp-empty"><h3>${v.ctx.route.id?'Connection unavailable':'Choose an app to manage its tools'}</h3><p>${v.ctx.route.id?'This connection is unavailable in the current workspace.':'Connect an account to set its tool permissions.'}</p><a class="button" href="${esc(v.ctx.href(v.ctx.route.id?'connections':'integrations'))}">${v.ctx.route.id?'View connections':'Browse apps'}</a></div>`;return;}
     v.el.innerHTML=(v.group?'':identity(v))+(v.tab==='settings'?settings(v):v.tab==='activity'?activity(v):v.advanced?editor(v):accessSection(v))+
       `<div class="cp-feedback ${v.feedbackError?'cp-error':''}" ${v.notice?'':'hidden'} role="${v.feedbackError?'alert':'status'}">${esc(v.notice)}</div>`;
     v.group?.sync();
@@ -361,8 +361,8 @@
       }
     }
   }
-  function policyRoute(id,advanced=false){
-    return '#policies'+(id?'/'+encodeURIComponent(id):'')+(advanced?'?view=advanced':'');
+  function policyRoute(ctx,id,advanced=false){
+    return ctx.href('policies'+(id?'/'+encodeURIComponent(id):'')+(advanced?'?view=advanced':''));
   }
   function policyAccountPicker(accounts,id,disabled=false){
     if(accounts.length<2&&!id)return '';
@@ -374,12 +374,12 @@
     const pending=drafts.get(JSON.stringify([ctx.workspace.id,c.id,c.pilot?c.connectionId:null]))?.size||0;
     const allowed=count(pins({c}).size,c.pilot?'catalog tool':'tool')+' allowed';
     const counter=c.pilot&&active?`<p>Airport inbox counts ${ctx.workspace.policy==='Allow'?'allowed':'blocked'}</p>`:'';
-    const draft=pending?`<p><a class="cp-text-link" href="${policyRoute(c.id,true)}">${count(pending,'unsaved tool change')}</a></p>`:'';
+    const draft=pending?`<p><a class="cp-text-link" href="${esc(policyRoute(ctx,c.id,true))}">${count(pending,'unsaved tool change')}</a></p>`:'';
     const summary=catalog?`<strong>${mode?esc(accessModes[mode].name):'No preset applied'}</strong> · ${allowed}`:
       active?'Inbox counts connection':esc(status[c.status]||'Connection unavailable');
     const tab=catalog?'tools':'settings',label=catalog?'Access presets':'Account settings';
     return `<section class="cp-panel"><div class="cp-section-head"><div class="cp-bare">${ctx.logo(c.toolkit,28)}<div><h3>${esc(appName(c))}</h3><p>${esc(c.label)}</p></div></div></div>
-      <div class="cp-editor-guide"><div>${summary}${counter}${draft}</div><a class="cp-text-link" href="${route(c.id,tab)}">${label} ${ctx.icon('chevron-right',14)}</a></div></section>`;
+      <div class="cp-editor-guide"><div>${summary}${counter}${draft}</div><a class="cp-text-link" href="${connectionHref(ctx,c.id,tab)}">${label} ${ctx.icon('chevron-right',14)}</a></div></section>`;
   }
   function workspacePolicies(el,ctx){
     const advanced=ctx.route.query.get('view')==='advanced';
@@ -389,17 +389,17 @@
     if(g?.key!==key||!selected.length)g?.observer?.disconnect();
     if(!selected.length){
       groups.delete(el);
-      el.innerHTML=`<section class="cp-panel cp-empty"><h3>${ctx.route.id?'Connection unavailable':'No connected accounts'}</h3><p>${ctx.route.id?'This account is unavailable in this workspace.':'Connect an account to choose which tools agents can use.'}</p><a class="button" href="${ctx.route.id?'#policies':'#integrations'}">${ctx.route.id?'View policies':'Browse integrations'}</a></section>`;
+      el.innerHTML=`<section class="cp-panel cp-empty"><h3>${ctx.route.id?'Connection unavailable':'No connected accounts'}</h3><p>${ctx.route.id?'This account is unavailable in this workspace.':'Connect an account to choose which tools agents can use.'}</p><a class="button" href="${esc(ctx.href(ctx.route.id?'policies':'integrations'))}">${ctx.route.id?'View policies':'Browse integrations'}</a></section>`;
       el.classList.add('cp-page');return;
     }
     if(!advanced){
       const picker=policyAccountPicker(accounts,ctx.route.id);
-      const html=`<div class="cp-policy-top policy-toolbar">${picker}<a class="button minor" href="${policyRoute(ctx.route.id,true)}">Advanced tool editor</a></div><div class="cp-groups">${selected.map(c=>policySummary(c,ctx)).join('')}</div>`;
+      const html=`<div class="cp-policy-top policy-toolbar">${picker}<a class="button minor" href="${esc(policyRoute(ctx,ctx.route.id,true))}">Advanced tool editor</a></div><div class="cp-groups">${selected.map(c=>policySummary(c,ctx)).join('')}</div>`;
       if(g?.key===key&&g.stamp===html)return;
       groups.set(el,{key,stamp:html});
       el.classList.add('cp-page');el.innerHTML=html;
       const select=el.querySelector('[data-cp-account]');
-      if(select)select.onchange=()=>ctx.navigate(policyRoute(select.value));
+      if(select)select.onchange=()=>ctx.navigate(policyRoute(ctx,select.value));
       return;
     }
     if(!g||g.key!==key){
@@ -413,12 +413,12 @@
         if(!g.current())return;
         const pending=g.views().reduce((n,v)=>n+v.draft.size,0);
         const picker=policyAccountPicker(g.accounts,g.ctx.route.id,g.saving);
-        const back=`<a class="cp-text-link" href="${policyRoute(g.ctx.route.id)}">Back to access presets</a>`;
+        const back=`<a class="cp-text-link" href="${esc(policyRoute(g.ctx,g.ctx.route.id))}">Back to access presets</a>`;
         const html=back+picker+saveBar(pending,g.saving);
         if(g.stamp!==html){g.stamp=html;bar.innerHTML=html;}
         notice.textContent=g.notice;notice.hidden=!g.notice;notice.classList.toggle('cp-error',g.error);
       };
-      bar.onchange=e=>{if(e.target.matches('[data-cp-account]')&&!g.saving)g.ctx.navigate(policyRoute(e.target.value,true));};
+      bar.onchange=e=>{if(e.target.matches('[data-cp-account]')&&!g.saving)g.ctx.navigate(policyRoute(g.ctx,e.target.value,true));};
       bar.onclick=async e=>{
         const b=e.target.closest('[data-cp]');if(!b||b.disabled||g.saving||!g.current())return;
         const views=g.views();

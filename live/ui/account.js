@@ -205,7 +205,7 @@
       action.disabled=true;tell(status,'Creating your account…');
       try{
         await accountAPI('/signup',{displayName:name.input.value.trim(),...(token?{token}:{})});
-        remember('');history.replaceState(null,'','/#overview');location.reload();
+        remember('');location.reload();
       }catch(error){
         if(error.code==='invitation_invalid' || error.code==='invitation_required'){
           tell(status,'This invitation could not be accepted. Sign in with the invited email, or ask your admin for a fresh link if it expired, was used, or was revoked.',true);
@@ -222,7 +222,9 @@
     }catch(error){
       const panel=gate('Open your Airport account','We couldn’t load your sign-in details. Sign in again or retry the connection.');
       const actions=element('div','acct-actions');
-      actions.append(link('Sign in','/login','btn primary'),button('Retry','',()=>location.reload()));
+      const signInPath=location.pathname==='/account'||location.pathname.startsWith('/w/')
+        ? location.pathname+location.search : '/login'+location.hash;
+      actions.append(link('Sign in',signInPath,'btn primary'),button('Retry','',()=>location.reload()));
       panel.append(actions);return false;
     }
     if(session.signupMode==='open'){remember('');invalidLink=false;}
