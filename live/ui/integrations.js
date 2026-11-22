@@ -147,7 +147,7 @@
           const hasInboxCounts=c.id==='pilot-gmail'&&ctx.workspace.policy==='Allow';
           const needsAccess=!hasInboxCounts&&!c.accessMode&&!(c.tools||[]).some(t=>t.allowed||t.enabled);
           const status=c.status==='active'?(needsAccess?'Connected · Set up access':'Connected'):c.status==='pending'?'Awaiting sign-in':'Address mismatch';
-          return `<a class="linked-account" href="#connections/${encodeURIComponent(c.id)}/settings"><span>${esc(c.label||a.name)}</span><span class="int-status">${status}</span>${icon('chevron-right',14)}</a>`;
+          return `<a class="linked-account" href="${ctx.connectionPath(c.id,c.status)}"><span>${esc(c.label||a.name)}</span><span class="int-status">${status}</span>${icon('chevron-right',14)}</a>`;
         }).join('')||'<p class="empty">No accounts connected.</p>'}</section></div>`;
       el.onclick=e=>{if(live&&current()&&e.target.closest('[data-connect-integration]'))ctx.connectToolkit(a);};
     }

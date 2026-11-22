@@ -159,7 +159,9 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       await page.getByRole('button',{name:'Done',exact:true}).click();
       assert.equal(await page.locator('.rg-agent').filter({hasText:'Duet'}).locator('.agent-icon-letter').textContent(),'D');
     });
-    await t.test('an existing inbox-count connection lists and manages the Gmail catalog on its original URL',async ()=>{
+    const searchTools=page.getByRole('searchbox',{name:'Search tools'});
+    const advancedLink=page.getByRole('link',{name:/Customize individual tools/i});
+    await t.test('Gmail opens with presets and preserves independent grants across advanced navigation',async ()=>{
       const owner=async (action,data={})=>{
         const response=await ctx.request.post(origin+'/api/'+action,{
           headers:{'x-airport-console':'1'},data:{workspace:'personal',...data}
@@ -171,31 +173,64 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       assert.equal((await owner('check')).status,'active');
       await owner('policy',{policy:'Allow'});
       const toolsURL=origin+'/#connections/pilot-gmail/tools?workspace=personal';
+      const advancedURL=toolsURL.replace('/tools?','/tools/advanced?');
       await page.goto(toolsURL);
       await page.reload();
       const control=slug=>page.locator('[data-cp-tool="'+slug+'"]');
+      const readOnly=page.locator('[data-access-preset="read-only"]');
+      await readOnly.waitFor();
+      assert.equal(await readOnly.isChecked(),true);
+      assert.deepEqual(await page.locator('[data-access-preset]').evaluateAll(inputs=>inputs.map(input=>input.value)),
+        ['read-only','write-only','read-write']);
+      assert.equal(await searchTools.count(),0);
+      await advancedLink.click();
+      await page.waitForURL(advancedURL);
+      await searchTools.waitFor();
+      await page.goBack();
+      await page.waitForURL(toolsURL);
+      await readOnly.waitFor();
+      assert.equal(await searchTools.count(),0);
+      await page.goForward();
+      await page.waitForURL(advancedURL);
       assert.equal(await control('gmail_inbox_counts').inputValue(),'allow');
       assert.equal(await control('GMAIL_GET_MESSAGE').inputValue(),'block');
       await page.getByRole('button',{name:'Next',exact:true}).click();
       assert.equal(await control('GMAIL_SEND_EMAIL').inputValue(),'block');
-      await page.getByRole('searchbox',{name:'Search tools'}).fill('labels');
+      await searchTools.fill('labels');
       await control('GMAIL_LIST_LABELS').selectOption('allow');
+      await page.getByRole('link',{name:'Access presets'}).click();
+      await page.getByText(/1 unsaved tool change/).waitFor();
+      assert.equal(await page.locator('[data-access-apply]').isDisabled(),true);
+      await advancedLink.click();
+      assert.equal(await control('GMAIL_LIST_LABELS').inputValue(),'allow');
       await page.getByRole('button',{name:'Save changes'}).click();
       await page.getByText('1 change saved.',{exact:true}).waitFor();
       await page.reload();
       assert.equal(await control('GMAIL_LIST_LABELS').inputValue(),'allow');
       assert.equal(await control('GMAIL_GET_MESSAGE').inputValue(),'block');
       assert.equal(await control('gmail_inbox_counts').inputValue(),'allow');
-      assert.equal(page.url(),toolsURL);
+      assert.equal(page.url(),advancedURL);
       await page.getByRole('link',{name:'Access presets'}).click();
-      await page.getByRole('button',{name:'Change access'}).click();
-      await page.locator('[data-access-preset="read-only"]').check();
+      await page.waitForURL(toolsURL);
+      await readOnly.check();
       await page.getByRole('button',{name:'Apply read only'}).click();
       await page.getByText(/Read only · 2 catalog tools allowed/).waitFor();
-      await page.getByRole('link',{name:'Tools',exact:true}).click();
+      await advancedLink.click();
       assert.equal(await control('GMAIL_GET_MESSAGE').inputValue(),'allow');
       assert.equal(await control('gmail_inbox_counts').inputValue(),'allow');
-      assert.equal(page.url(),toolsURL);
+      assert.equal(page.url(),advancedURL);
+
+      await page.getByRole('link',{name:'Policies',exact:true}).click();
+      await page.getByRole('link',{name:'Advanced tool editor',exact:true}).waitFor();
+      assert.equal(await searchTools.count(),0);
+      await page.getByRole('link',{name:'Advanced tool editor',exact:true}).click();
+      await searchTools.waitFor();
+      const policyURL=new URLSearchParams(page.url().split('?')[1]);
+      assert.equal(policyURL.get('workspace'),'personal');
+      assert.equal(policyURL.get('view'),'advanced');
+      await page.getByRole('link',{name:'Back to access presets',exact:true}).click();
+      await page.getByRole('link',{name:'Advanced tool editor',exact:true}).waitFor();
+      assert.equal(await searchTools.count(),0);
     });
     const workspaceButton=page.locator('#ws-button');
     const workspaceMenu=page.locator('#workspace-menu');
@@ -227,6 +262,8 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         const {connectionId,url,status}=await added.json();
         assert.equal(status,'pending');
         const settings=origin+'/#connections/'+connectionId+'/settings?workspace=work';
+        const toolsURL=settings.replace('/settings?','/tools?');
+        const advancedURL=settings.replace('/settings?','/tools/advanced?');
         const [popup]=await Promise.all([
           ctx.waitForEvent('page'),
           page.getByRole('link',{name:/Open authorization/}).click()
@@ -240,19 +277,18 @@ test('a customer signs in, creates an account, switches workspaces and signs out
           callback.searchParams.set('status','success');
           callback.searchParams.set('connected_account_id',accountId);
           await popup.goto(callback.href);
-          await popup.waitForURL(settings);
-          await popup.locator('.cp-facts dd').filter({hasText:/^Connected$/}).waitFor();
+          await popup.waitForURL(toolsURL);
+          await popup.locator('[data-access-preset="read-only"]').waitFor();
         }
         await popup.close();
         await page.bringToFront();
-        await page.waitForURL(settings,{timeout:35_000});
-        await page.locator('.cp-facts dd').filter({hasText:/^Connected$/}).waitFor();
-        assert.equal(await page.locator('.cp-label-value').textContent(),label);
+        await page.waitForURL(toolsURL,{timeout:35_000});
         assert.equal(await page.locator('#workspace-name').textContent(),'Work');
         assert.equal(await page.locator('dialog[open]').count(),0);
         const access=page.locator('[data-access-setup]');
         assert.equal(await access.locator('[data-access-preset="read-only"]').isChecked(),true);
         await access.getByText('1 tool will be allowed.',{exact:true}).waitFor();
+        assert.equal(await searchTools.count(),0);
         if(!returnsToAirport)return;
 
         const applyPreset=async mode=>{
@@ -267,18 +303,29 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         for(const [mode,expected] of [['read-only',1],['write-only',1],['read-write',2]]){
           const result=await applyPreset(mode);
           assert.equal(result.allowed,expected);
-          await access.getByRole('button',{name:'Change access'}).click();
         }
-        await applyPreset('custom');
-        await page.waitForURL(settings.replace('/settings?','/tools?'));
+        await access.getByText(/Read and write · 2 tools allowed/).waitFor();
+        await advancedLink.click();
+        await page.waitForURL(advancedURL);
         const toolControl=slug=>page.locator('[data-cp-tool="'+slug+'"]');
         assert.equal(await toolControl('GITHUB_LIST_REPOSITORIES').inputValue(),'allow');
         assert.equal(await toolControl('GITHUB_CREATE_ISSUE').inputValue(),'allow');
         assert.equal(await toolControl('GITHUB_DELETE_REPOSITORY').inputValue(),'block');
+        await page.goBack();
+        await page.waitForURL(toolsURL);
+        await access.getByText(/Read and write · 2 tools allowed/).waitFor();
+        await advancedLink.click();
         await toolControl('GITHUB_CREATE_ISSUE').selectOption('block');
         await page.getByRole('button',{name:'Save changes'}).click();
         await page.getByText('1 change saved.',{exact:true}).waitFor();
+        await page.getByRole('link',{name:'Access presets'}).click();
+        await access.getByText(/Custom · 1 tool allowed/).waitFor();
         await page.goto(settings);
+        await page.locator('.cp-facts dd').filter({hasText:/^Connected$/}).waitFor();
+        assert.equal(await page.locator('.cp-label-value').textContent(),label);
+        await page.getByRole('navigation',{name:'Workspace pages'}).getByRole('link',{name:'Connections',exact:true}).click();
+        await page.locator('.rg-account').filter({hasText:label}).click();
+        await page.waitForURL(toolsURL);
         await access.getByText(/Custom · 1 tool allowed/).waitFor();
       });
     }

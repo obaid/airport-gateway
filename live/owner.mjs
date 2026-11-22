@@ -25,8 +25,9 @@ const assets=new Map([
   ['/favicon.svg',['../dist/favicon.svg','image/svg+xml']],['/assets/favicon.svg',['../dist/favicon.svg','image/svg+xml']]
 ]);
 function json(res,status,data,extras={}) {res.writeHead(status,{...headers,'Content-Type':'application/json; charset=utf-8',...extras});res.end(JSON.stringify(data));}
-export function connectionSettingsURL(workspace,id) {
-  return '/#connections/'+encodeURIComponent(id)+'/settings?workspace='+encodeURIComponent(workspace);
+export function connectionHomeURL(workspace,id,status) {
+  const tab=status==='active'?'tools':'settings';
+  return '/#connections/'+encodeURIComponent(id)+'/'+tab+'?workspace='+encodeURIComponent(workspace);
 }
 export function serveBrandAsset(req,res,pathname) {
   return publicBrandAssets.has(pathname) && serveOwnerAsset(req,res,pathname);
@@ -72,12 +73,16 @@ export function createOwnerHandler({store,requireOwner,ownerOrigin,publicBase,lo
         if(workspace && connectionId){
           try {
             await requireOwner(req);
-            const c=store.getConnection(workspace,connectionId);
-            location=connectionSettingsURL(c.workspace,c.id);
-            // Composio may still be finalizing consent. The console retries a pending
-            // connection using the saved account, independently of callback parameters.
-            try { await actions.get('connection-check')({workspace,connectionId,pendingOnly:true}); }
-            catch { /* Return to the connection even on a transient provider error. */ }
+            if(connectionId==='pilot-gmail'){
+              location=connectionHomeURL(workspace,connectionId,store.get(workspace).status);
+            }else{
+              // Use the saved account to check consent. Read the stored status even
+              // on a transient provider error so a pending sign-in can resume.
+              try { await actions.get('connection-check')({workspace,connectionId,pendingOnly:true}); }
+              catch { /* The console will retry a pending connection. */ }
+              const c=store.getConnection(workspace,connectionId);
+              location=connectionHomeURL(c.workspace,c.id,c.status);
+            }
           } catch(error){
             // Local launcher cookies can be absent on a cross-site navigation.
             // A missing session or a connection from another tenant just returns home.
@@ -107,7 +112,8 @@ export function createOwnerHandler({store,requireOwner,ownerOrigin,publicBase,lo
       switch(p) {
         case '/api/connect': {
           const api=service(),email=assertEmail(b.expectedEmail),op=store.begin(ws,email);
-          try { const result=await api.start(op.owner,ownerOrigin+'/oauth/done');store.attach(ws,op.attempt,result.connectionId);return json(res,200,{url:result.url}); }
+          const callback=ownerOrigin+'/oauth/done?workspace='+encodeURIComponent(ws)+'&connection=pilot-gmail';
+          try { const result=await api.start(op.owner,callback);store.attach(ws,op.attempt,result.connectionId);return json(res,200,{url:result.url}); }
           catch(e){store.cancel(ws,op.attempt);throw e;}
         }
         case '/api/check': {

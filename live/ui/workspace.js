@@ -151,7 +151,7 @@
     const subtitle=active?toolkitName(connection.toolkit)+' · '+countText(pins.length,'allowed tool'):toolkitName(connection.toolkit)+' · Awaiting sign-in';
     return `<section class="policy-group" aria-label="${esc((connection.label||toolkitName(connection.toolkit))+' tool policies')}">
       <div class="policy-group-head"><span>${mark(connection.toolkit)}</span><div><h3>${esc(connection.label||toolkitName(connection.toolkit))}</h3><p>${esc(subtitle)}</p></div>
-      ${manageBtn(active?'tools':'app-info',active?'Manage tools':'Review connection',connection.id)}</div>${rows}</section>`;
+      ${manageBtn(active?'tools':'app-info',active?'Access presets':'Review connection',connection.id)}</div>${rows}</section>`;
   }
 
   function renderPolicies(w) {
@@ -275,14 +275,15 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     return `<span class="app-monogram" aria-hidden="true">${esc((prettyName(code)||'A').slice(0,2))}</span>`;
   };
   let graphWorkspace='',traceId='',graphObserver,graphFrame=0;
+  const connectionPath=(id,status)=>'#connections/'+encodeURIComponent(id)+'/'+(status==='active'?'tools':'settings');
   function gatewayObjects(w) {
     const agents=agentGrants(w).map(a=>({key:'agent:'+a.id,id:a.id,name:a.actor,clientType:a.clientType,kind:'Agent',active:true,status:'Connected',action:'agent-info',actionLabel:'Manage agent',info:describeGrant(a.expiresAt)}));
     const invite=state.invites?.some(i=>i.workspace===w.id) || w.invitation;
     if(w.grant || invite) agents.unshift({key:'muse',name:'Muse',mark:'muse',kind:'Agent',active:!!w.grant,status:w.grant?'Paired':invite?'Pairing':'Unpaired',action:'muse',actionLabel:w.grant?'Manage access':'Set up Muse',info:w.grant?'Muse is authorized to request enabled tools in this workspace.':invite?'A pairing invitation is in progress for this workspace.':'Connect Muse with a workspace token or pairing invitation.'});
-    const apps=workspaceApps(w).map(c=>({key:'app:'+c.id,id:c.id,name:c.label || toolkitName(c.toolkit),mark:c.toolkit,kind:'App',active:state.ready&&c.status==='active'&&toolCount(c)>0,status:c.status==='active'?countText(toolCount(c),'enabled tool'):'Awaiting authorization',action:'app-info',actionLabel:'Manage connection',info:toolkitName(c.toolkit)+' · '+(c.status==='active'?'Verified connection':'Pending connection')}));
+    const apps=workspaceApps(w).map(c=>({key:'app:'+c.id,id:c.id,path:connectionPath(c.id,c.status),name:c.label || toolkitName(c.toolkit),mark:c.toolkit,kind:'App',active:state.ready&&c.status==='active'&&toolCount(c)>0,status:c.status==='active'?countText(toolCount(c),'enabled tool'):'Awaiting authorization',action:'app-info',actionLabel:'Manage connection',info:toolkitName(c.toolkit)+' · '+(c.status==='active'?'Verified connection':'Pending connection')}));
     if(pilotConnected(w)){
       const allowed=(w.gmailCatalog?toolCount(w.gmailCatalog):0)+(w.policy==='Allow'?1:0);
-      apps.unshift({key:'gmail',name:'Gmail inbox',mark:'gmail',kind:'App',active:state.ready&&w.status==='active'&&allowed>0,status:w.status==='mismatch'?'Address mismatch':w.status==='pending'?'Awaiting Google':countText(allowed,'enabled tool'),action:'mail',actionLabel:'Manage Gmail',info:w.email||w.expectedEmail||'Gmail'});
+      apps.unshift({key:'gmail',path:connectionPath('pilot-gmail',w.status),name:'Gmail inbox',mark:'gmail',kind:'App',active:state.ready&&w.status==='active'&&allowed>0,status:w.status==='mismatch'?'Address mismatch':w.status==='pending'?'Awaiting Google':countText(allowed,'enabled tool'),action:'mail',actionLabel:'Manage Gmail',info:w.email||w.expectedEmail||'Gmail'});
     }
     const endpointStatus=state.publicURL?'Remote endpoint available':'Local gateway';
     const gateway={key:'gateway',mark:'gateway',name:'Airport',kind:'Gateway',active:true,status:endpointStatus,action:'permissions',actionLabel:'View tool policies',info:endpointStatus+' · '+countText(agents.filter(a=>a.active).length,'connected agent')+' · '+countText((w.status==='active'?1:0)+workspaceApps(w).filter(c=>c.status==='active').length,'verified connection')+(pilotConnected(w)||!supportsCatalog()?' · Counts '+(w.policy==='Allow'?'allowed':'blocked')+' by policy':'')};
@@ -345,7 +346,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const group=(entries,side)=>{
       const left=side==='left';
       const items=entries.slice(0,4).map(n=>{
-        const target=receipt||(n.key==='muse'?'#agents/muse':n.key==='gmail'?'#connections/pilot-gmail/settings':(left?'#agents/':'#connections/')+encodeURIComponent(n.id)+(left?'':'/settings'));
+        const target=receipt||n.path||'#agents/'+encodeURIComponent(n.key==='muse'?'muse':n.id);
         const duplicate=!left&&apps.filter(x=>x.mark===n.mark).length>1;
         const display=left?n.name:n.key==='gmail'?'Gmail':historical?n.name:toolkitName(n.mark);
         const sub=duplicate?(n.key==='gmail'?w.email||w.expectedEmail:n.name):'';
@@ -391,13 +392,14 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(page==='mail'){id='pilot-gmail';tab='settings';}
     if(page==='muse')id='muse';
     page=alias[page]||page||'overview';
-    if(page==='connections' && id)tab=tab||'settings';
-    return {page,id,tab,query};
+    if(page==='connections' && id&&!['settings','tools','activity'].includes(tab))tab='tools';
+    const detail=page==='connections'&&id&&tab==='tools'&&segments[3]==='advanced'?'advanced':'';
+    return {page,id,tab,detail,query};
   }
   function hrefFor(hash,workspace=workspaceId){
     const r=parseRoute(hash);
     if(workspace)r.query.set('workspace',workspace);
-    const segments=[r.page,r.id,r.tab].filter(Boolean).map(encodeURIComponent);
+    const segments=[r.page,r.id,r.tab,r.detail].filter(Boolean).map(encodeURIComponent);
     return '#'+segments.join('/')+(r.query.size?'?'+r.query:'');
   }
   function navigate(hash,workspace=workspaceId,replace=false){
@@ -450,16 +452,16 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function registerRows(w,kind){
     const models=gatewayObjects(w);
-    const row=(logo,name,sub,status,action,id,label='Manage')=>{
-      const detail={mail:'#connections/pilot-gmail/settings',muse:'#agents/muse','app-info':'#connections/'+encodeURIComponent(id||'')+'/settings','agent-info':'#agents/'+encodeURIComponent(id||'')}[action];
+    const row=(logo,name,sub,status,action,id,label='Manage',path)=>{
+      const detail=path||{muse:'#agents/muse','agent-info':'#agents/'+encodeURIComponent(id||'')}[action];
       const content=`<span class="registry-mark">${logo}</span><span class="registry-name"><strong>${esc(name)}</strong><small>${esc(sub)}</small></span><span class="registry-tag">${esc(status)}</span><span class="row-link">${icon('chevron-right',17)}</span>`;
       if(detail)return `<a class="registry-row" href="${esc(hrefFor(detail))}" data-route="${esc(detail)}" data-id="${esc(id||'')}" aria-label="${esc(label+' '+name)}">${content}</a>`;
       return `<button class="registry-row" type="button" data-manage="${esc(action)}" data-id="${esc(id||'')}" aria-label="${esc(label+' '+name)}">${content}</button>`;
     };
     if(kind==='connections'){
-      const rows=models.apps.map(c=>row(mark(c.mark),c.name,c.info,c.status,c.action,c.id)).join('');
+      const rows=models.apps.map(c=>row(mark(c.mark),c.name,c.info,c.status,c.action,c.id,c.actionLabel,c.path)).join('');
       const retired=(state.connections||[]).filter(c=>c.workspace===w.id&&c.status==='disabled');
-      const archive=retired.length?`<details class="retired-accounts"><summary>${esc(countText(retired.length,'disconnected account'))}</summary>${retired.map(c=>row(mark(c.toolkit),c.label||toolkitName(c.toolkit),toolkitName(c.toolkit),'Disconnected','app-info',c.id,'Review')).join('')}</details>`:'';
+      const archive=retired.length?`<details class="retired-accounts"><summary>${esc(countText(retired.length,'disconnected account'))}</summary>${retired.map(c=>row(mark(c.toolkit),c.label||toolkitName(c.toolkit),toolkitName(c.toolkit),'Disconnected','app-info',c.id,'Review',connectionPath(c.id,c.status))).join('')}</details>`:'';
       region('connections',[w.id,rows,archive],heading('Workspace accounts',icon('connections',18),badge(String(models.apps.length)))+(rows||'<p class="empty">Connect an app to make its tools available in this workspace.</p>')+archive);
       return;
     }
@@ -500,7 +502,8 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       : selectedApp?'Integration details and connected accounts in '+w.name+'.':description[r.page]||'This page could not be found in your workspace.';
     document.title=title+' · '+w.name+' · Airport';
     $('#crumb').textContent=w.name;$('#crumb').title='Switch workspace';
-    $('#crumb-section').innerHTML=section&&r.id?`<a data-route="#${r.page}" href="${esc(hrefFor('#'+r.page))}">${esc(section.name)}</a><b>/</b><span>${esc(r.page==='connections'?prettyName(r.tab):r.page==='activity'?'Request':r.page==='agents'?title:'Workspace policy')}</span>`:esc(section?.name||'Page');
+    const connectionTab=r.detail==='advanced'?'Advanced tools':r.tab==='tools'?'Access presets':prettyName(r.tab);
+    $('#crumb-section').innerHTML=section&&r.id?`<a data-route="#${r.page}" href="${esc(hrefFor('#'+r.page))}">${esc(section.name)}</a><b>/</b><span>${esc(r.page==='connections'?connectionTab:r.page==='activity'?'Request':r.page==='agents'?title:'Workspace policy')}</span>`:esc(section?.name||'Page');
     if(r.page==='account'){
       $('#crumb').textContent='Airport';$('#crumb').title='Return to workspace overview';
       document.title='Account settings · Airport';
@@ -552,13 +555,13 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const isCurrent=()=>!terminal&&workspaceId===w.id&&mountedKey===identity&&rootAttached();
     const rootAttached=()=>entry.root.isConnected;
     const guarded=fn=>(...args)=>{if(isCurrent())return fn(...args);};
-    const ctx={workspace:w,state,route:r,icon,logo:mark,mark,agentLogo,requestLogo,invitationLogo,escape:esc,isCurrent,agentEndpoint,describeGrant,
+    const ctx={workspace:w,state,route:r,connectionPath,icon,logo:mark,mark,agentLogo,requestLogo,invitationLogo,escape:esc,isCurrent,agentEndpoint,describeGrant,
       auditEntry:entry=>entry.workspace===w.id?auditEntry(w,entry,true):'',
       navigate:guarded(navigate),toast:guarded(message),refresh:guarded(refresh),
       request:(path,data)=>isCurrent()?request(path,data):Promise.reject(new Error('This workspace view has closed.')),
       manage:guarded((action,id)=>appManagement(action,id)),connectToolkit:guarded(item=>openToolkit(item)),
       openLog:guarded(id=>navigate('#activity/'+encodeURIComponent(id))),
-      onChange:guarded((id,tab)=>navigate(r.page==='policies'?'#policies/'+encodeURIComponent(id):'#connections/'+encodeURIComponent(id)+'/'+encodeURIComponent(tab||'settings'))),
+      onChange:guarded((id,tab)=>navigate(r.page==='policies'?'#policies/'+encodeURIComponent(id):'#connections/'+encodeURIComponent(id)+'/'+encodeURIComponent(tab||'tools'))),
       pilotAction:guarded(action=>{if(Object.hasOwn(handlers,action))return handlers[action]();})
     };
     const signature=JSON.stringify([state.ready,state.publicURL,w,state.connections?.filter(c=>c.workspace===w.id),state.agentGrants?.filter(a=>a.workspace===w.id),state.agentInvitations?.filter(i=>i.workspace===w.id),state.invites?.filter(i=>i.workspace===w.id),state.activityDetailsVersion,state.logs?.filter(l=>l.workspace===w.id)]);
@@ -757,7 +760,22 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     for(const grant of result.agentGrants || []) {
       if(grant.expiresAt==='+275760-09-13T00:00:00.000Z') grant.expiresAt=null;
     }
-    state=result;network('');render();
+    // If verification finishes after the callback, a tab still watching sign-in
+    // should open access setup. Leave visits to other pages or dialogs alone.
+    const route=parseRoute(),w=current();
+    const watching=w&&route.page==='connections'&&route.tab==='settings'&&!dialog.open&&
+      (!route.query.has('workspace')||route.query.get('workspace')===w.id)&&
+      (route.id==='pilot-gmail'?w:knownConnection(w,route.id))?.status==='pending';
+    state=result;network('');
+    if(watching&&supportsCatalog()&&current()){
+      const connection=route.id==='pilot-gmail'?current():knownConnection(current(),route.id);
+      if(connection?.status==='active'){
+        navigate(connectionPath(route.id,'active'),w.id);
+        message('Connection verified. Choose an access preset.');
+        return;
+      }
+    }
+    render();
     finishAuthorizationDialog();
   }
   async function action(task) {
@@ -776,10 +794,10 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     }
   }
 
-  function authorizeMail(url) {
+  function authorizeMail(url,w) {
     const destination=originURL(url);
     if(!destination) throw new Error('The gateway did not return a secure connection link.');
-    showDialog('Authorize Gmail',`<p>Continue to the provider and sign in to the Gmail account you chose for this workspace.</p>
+    showDialog('Authorize Gmail',`<p data-authorizing-id="pilot-gmail" data-authorizing-workspace="${esc(w.id)}">Continue to the provider and sign in to the Gmail account you chose for this workspace.</p>
       <div class="actions"><a class="action-link primary" href="${esc(destination)}" target="_blank" rel="noopener noreferrer">Open sign-in ↗</a>${btn('close','Done','minor')}</div>`);
   }
   function confirmation(kind,w) {
@@ -848,11 +866,13 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   function finishAuthorizationDialog() {
     const notice=authorizationDialog();
     if(!notice || notice.dataset.authorizingWorkspace!==workspaceId)return;
-    const w=current(), c=knownConnection(w,notice.dataset.authorizingId);
-    if(!c || !['active','disabled'].includes(c.status))return;
+    const w=current(),id=notice.dataset.authorizingId,pilot=id==='pilot-gmail';
+    const c=pilot?w:knownConnection(w,id);
+    if(!c || !['active','disabled','disconnected','mismatch'].includes(c.status))return;
     closeDialog();
-    navigate('#connections/'+encodeURIComponent(c.id)+'/settings',w.id);
-    message(c.status==='active'?(c.label||toolkitName(c.toolkit))+' connected to '+w.name+'. Choose agent access below.':'Sign-in did not complete. Connect the app again to retry.',c.status!=='active');
+    navigate(connectionPath(id,c.status),w.id);
+    const label=pilot?'Gmail':c.label||toolkitName(c.toolkit);
+    message(c.status==='active'?label+' connected to '+w.name+'. Choose an access preset.':'Sign-in did not complete. Connect the app again to retry.',c.status!=='active');
   }
   const scopedApp=(w,id)=>workspaceApps(w).find(c=>String(c.id)===String(id));
   const scopedAgent=(w,id)=>agentGrants(w).find(a=>String(a.id)===String(id));
@@ -931,7 +951,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const approved=pins.length?`<div class="approved-tools"><h3>Approved tools</h3>${pins.map(tool=>`<div><span><strong>${esc(tool.name||tool.slug)}</strong><small>${esc(tool.version||'Version not recorded')}</small></span>${pinControl(c,tool,'Revoke')}</div>`).join('')}</div>`:'';
     showDialog(c.label||toolkitName(c.toolkit),`<div class="identity-line">${mark(c.toolkit,30)}<div><h3>${esc(toolkitName(c.toolkit))}</h3><p>${esc(w.name)} · ${active?'Verified':'Awaiting authorization'}</p></div></div>
       <p${active?'':' data-authorizing-id="'+esc(c.id)+'" data-authorizing-workspace="'+esc(w.id)+'"'}>${active?esc(countText(toolCount(c),'tool'))+' enabled for workspace agents.':'Finish signing in with the provider. Airport checks the connection automatically when you return.'}</p>
-      ${actionRow((active?manageBtn('tools','Manage tools',c.id,true):manageBtn('check-app','Check connection',c.id,true))+manageBtn('remove-app','Disconnect',c.id))}${active?'':'<p class="hint" role="status" data-authorization-status></p>'}${approved}`);
+      ${actionRow((active?manageBtn('tools','Access presets',c.id,true):manageBtn('check-app','Check connection',c.id,true))+manageBtn('remove-app','Disconnect',c.id))}${active?'':'<p class="hint" role="status" data-authorization-status></p>'}${approved}`);
     $('#dialog-content').dataset.connection=c.id;
   }
   function agentInfo(id){
@@ -1182,13 +1202,13 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
         }else{
           await refresh();
           if(!dialog.open || !f.isConnected || workspaceId!==w.id)return;
-          closeDialog();navigate('#connections/'+encodeURIComponent(r.connectionId)+'/settings',w.id);message('Connection added. Choose agent access below.');
+          closeDialog();navigate(connectionPath(r.connectionId,'active'),w.id);message('Connection added. Choose an access preset.');
         }
       });return;
     }
     if(f.id==='connect-form'){
       const expectedEmail=f.elements.expectedEmail.value.trim();
-      action(async w=>{const r=await request('connect',{workspace:w.id,expectedEmail});authorizeMail(r.url);});
+      action(async w=>{const r=await request('connect',{workspace:w.id,expectedEmail});authorizeMail(r.url,w);});
     }else if(f.dataset.pair){
       const code=f.elements.code.value.trim(); if(!code)return;
       const id=f.dataset.pair;

@@ -217,6 +217,7 @@ test('catalog OAuth returns verify the exact saved connection and land in its wo
   assert.equal(url.searchParams.get('workspace'),'work');assert.equal(url.searchParams.get('connection'),github);
   const route=url.pathname+url.search+'&status=ACTIVE&connected_account_id=ca_other';
   const settings='/#connections/'+github+'/settings?workspace=work';
+  const presets='/#connections/'+github+'/tools?workspace=work';
   const status=async id=>(await app.owner(a)).body.connections.find(c=>c.id===id).status;
   assert.equal((await app.send(ownerHost,route)).status,401);
   assert.equal((await app.owner(b,route)).headers.location,'/');
@@ -226,10 +227,10 @@ test('catalog OAuth returns verify the exact saved connection and land in its wo
   for(const state of ['INITIATED','unavailable','ACTIVE']){
     upstream=state;
     const result=await app.owner(a,route);
-    assert.equal(result.status,303);assert.equal(result.headers.location,settings);
+    assert.equal(result.status,303);assert.equal(result.headers.location,state==='ACTIVE'?presets:settings);
     assert.equal(await status(github),state==='ACTIVE'?'active':'pending');
   }
-  assert.equal((await app.owner(a,route)).headers.location,settings);
+  assert.equal((await app.owner(a,route)).headers.location,presets);
   const automatic={workspace:'work',connectionId:github,pendingOnly:true};
   assert.equal((await app.owner(a,'/api/connection-check',automatic)).body.status,'active');
   await app.owner(a,'/api/connection-remove',automatic);
@@ -314,7 +315,7 @@ test('the optional verifier binds a generic connection to its signed-in tenant a
   assert.equal((await app.owner(a)).body.connections[0].status,'pending');
   const verified=await app.owner(a,route+'right');
   assert.equal(verified.status,303);
-  assert.equal(verified.headers.location,'/#connections/'+added.body.connectionId+'/settings?workspace=work');
+  assert.equal(verified.headers.location,'/#connections/'+added.body.connectionId+'/tools?workspace=work');
   assert.equal((await app.owner(a)).body.connections[0].status,'active');
   assert.equal((await app.owner(a,route+'right')).status,409);
   assert.deepEqual(calls,[{owner:connectionOwner,sessionUri:'other'},{owner:connectionOwner,sessionUri:'right'}]);
@@ -337,9 +338,12 @@ test('the verifier confirms the Gmail profile and refuses ambiguous attempts bef
   assert.equal((await app.owner(a,route)).status,409);
   assert.equal(consumed,0);
   await app.owner(b,'/api/connect',{workspace:'work',expectedEmail:'work@example.com'});
+  const callback='/oauth/done?workspace=work&connection=pilot-gmail';
+  assert.equal((await app.owner(b,callback)).headers.location,'/#connections/pilot-gmail/settings?workspace=work');
   const verified=await app.owner(b,route);
+  assert.equal((await app.owner(b,callback)).headers.location,'/#connections/pilot-gmail/tools?workspace=work');
   assert.equal(verified.status,303);
-  assert.equal(verified.headers.location,'/#connections/pilot-gmail/settings?workspace=work');
+  assert.equal(verified.headers.location,'/#connections/pilot-gmail/tools?workspace=work');
   assert.equal(consumed,1);
   assert.equal((await app.owner(b)).body.workspaces.find(w=>w.id==='work').status,'active');
 });
