@@ -98,6 +98,7 @@
     const raw = url.hash.startsWith('#invite=') ? url.hash.slice(8) : '';
     return tokenFormat.test(raw) ? raw : '';
   }
+  const isPlatformAdmin=()=>Boolean(session?.account && session.isPlatformAdmin===true);
   function drawFooter() {
     const account = session?.account;
     if (!account) return;
@@ -108,6 +109,18 @@
     find('#account-switch').setAttribute('aria-label','Account menu for '+account.displayName);
     find('#local-account').hidden = true;
     find('#account-dock').hidden = false;
+    const platform=find('#platform-nav');
+    platform.hidden=!isPlatformAdmin();
+    if(platform.hidden)platform.replaceChildren();
+    else if(!platform.childElementCount){
+      const admin=link('','/admin','nav-item');
+      admin.dataset.nav='admin';
+      const icon=element('span');
+      icon.dataset.icon='shield';icon.setAttribute('aria-hidden','true');
+      icon.innerHTML=window.Art.icon('shield',16);
+      admin.append(icon,element('span','','Admin'));
+      platform.append(element('div','nav-label second','Platform'),admin);
+    }
   }
   function closeMenu(focus = false) {
     const pop = find('#account-popover');
@@ -333,5 +346,5 @@
     settingsHost=root;const inner=element('div','acct-settings');root.replaceChildren(inner);
     profile(inner);if(session.signupMode==='invite' && session.account.role==='admin')invitations(root);
   }
-  window.AirportAccount = {connect,signedIn:()=>Boolean(session?.account),settings,unmount(){settingsHost=null;createdInvite=null;closeMenu();}};
+  window.AirportAccount = {connect,isPlatformAdmin,signedIn:()=>Boolean(session?.account),settings,unmount(){settingsHost=null;createdInvite=null;closeMenu();}};
 })();

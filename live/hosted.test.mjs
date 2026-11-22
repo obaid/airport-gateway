@@ -567,3 +567,33 @@ test('Airport email login preserves verified accounts, host isolation, workspace
   assert.equal(login.status,200);
   assert.match(login.headers['content-security-policy'],/connect-src 'self'/);
 });
+
+test('platform admin is restricted to the registered verified operator on the owner host',async t=>{
+  const dir=mkdtempSync(join(tmpdir(),'airport-platform-admin-'));
+  const operator='operator@example.test';
+  const app=await listen(readHostedConfig({...env(dir),AIRPORT_BOOTSTRAP_OWNER_EMAIL:operator}));
+  t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
+  const a=await token('a',{email:operator}),b=await token('b',{email:'member@example.test'});
+  const paths=['/admin','/api/admin/overview','/platform-admin.js','/platform-admin.css'];
+  assert.equal((await app.owner(a,'/api/account')).body.isPlatformAdmin,false);
+  for(const path of paths){
+    assert.equal((await app.owner(a,path)).status,403,path);
+    assert.equal((await app.send(ownerHost,path)).status,401,path);
+    assert.equal((await app.send(agentHost,path,{'cf-access-jwt-assertion':a})).status,404,path);
+  }
+  await app.signup(a,'Private Operator');
+  await app.signup(b,'Private Member');
+  assert.equal((await app.owner(a,'/api/account')).body.isPlatformAdmin,true);
+  assert.equal((await app.owner(b,'/api/account')).body.isPlatformAdmin,false);
+  for(const path of paths){
+    assert.equal((await app.owner(b,path)).status,403,path);
+    const allowed=await app.owner(a,path);
+    assert.equal(allowed.status,200,path);assert.equal(allowed.headers['cache-control'],'no-store');
+  }
+  const before=await app.owner(a,'/api/admin/overview');
+  assert.deepEqual(before.body.totals,{users:2,workspaces:0,connections:0,agents:0,successfulToolCalls:0});
+  await app.owner(b,'/api/workspace-create',{name:'Private Workspace'});
+  const after=await app.owner(a,'/api/admin/overview');
+  assert.equal(after.body.totals.workspaces,3);
+  assert.doesNotMatch(JSON.stringify(after.body),/Private|@|tenant|cookie|member@example/i);
+});

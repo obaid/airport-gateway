@@ -87,6 +87,7 @@ export function createAccounts(file, {signupMode='invite',bootstrapEmail=null,bo
     if (signupMode==='open') throw Object.assign(new Error('People can sign up directly while registration is open.'),{status:409,code:'invitations_disabled'});
   }
   return {
+    countUsers(){return db.prepare('SELECT count(*) AS total FROM users').get().total;},
     tenantForVerifiedEmail(email) {
       return byEmail.get(email)?.tenant || (email===bootstrapEmail ? bootstrapTenant : null);
     },

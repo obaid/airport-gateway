@@ -1,0 +1,72 @@
+.platform-admin {
+  display:grid;
+  gap:12px;
+  min-width:0;
+  color:var(--ink);
+}
+.pa-toolbar,.pa-line,.pa-tools-head { display:flex; align-items:center; gap:12px }
+.pa-toolbar { justify-content:flex-end; flex-wrap:wrap; gap:6px 14px }
+.pa-toolbar p,.pa-panel header p,.pa-empty,.pa-name-group small,.pa-value small,.pa-tools code { color:var(--muted); font-size:.81rem; line-height:1.5 }
+.pa-toolbar p,.pa-panel header p { margin:0 }
+.pa-toolbar .btn { min-height:33px; font-size:.81rem }
+.pa-toolbar .btn:focus-visible { outline:2px solid var(--focus); outline-offset:3px }
+.pa-content { display:grid; gap:18px; min-width:0 }
+.pa-stock {
+  background:linear-gradient(110deg,#173b2c,#102b23);
+  color:#f8fae9;
+  border:1px solid #355b45;
+  border-radius:12px;
+}
+.pa-stock dl { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin:0; padding:19px 0 }
+.pa-stock dl>div { min-width:0; padding:2px clamp(12px,1.9vw,26px); border-inline-start:1px solid #516d55 }
+.pa-stock dl>div:first-child { border:0 }
+.pa-stock dt { display:flex; align-items:center; gap:7px; min-height:1.6rem; font-weight:600; color:#d6e6ce; font-size:.83rem; line-height:1.3 }
+.pa-stock dt span { color:#cced9c; flex:none; display:flex }
+.pa-stock dd { margin:12px 0 0; font:700 clamp(1.85rem,3vw,2.7rem)/1.07 var(--display); font-variant-numeric:tabular-nums; letter-spacing:-.045em; overflow-wrap:anywhere }
+.pa-rankings { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:18px }
+.pa-panel { min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:10px; background:var(--panel) }
+.pa-panel header { padding:16px 20px; background:#eff2e2; border-bottom:1px solid var(--line) }
+.pa-panel h2 { margin:0 0 3px; color:var(--ink); font:720 1.19rem/1.28 var(--display); letter-spacing:-.035em }
+.pa-list { list-style:none; margin:0; padding:0 }
+.pa-list li { padding:12px 20px; border-bottom:1px solid var(--line) }
+.pa-list li:last-child { border:0 }
+.pa-mark { flex:none; display:grid; place-items:center; width:32px; height:32px }
+.pa-mark img,.pa-mark svg { max-width:100% }
+.pa-item-name,.pa-tools tbody th strong { font-size:.93rem; line-height:1.35; overflow-wrap:anywhere }
+.pa-name-group { min-width:0 }
+.pa-name-group small,.pa-tools code,.pa-tools th strong { display:block }
+.pa-value { margin-inline-start:auto; font:600 .95rem/1.3 var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap }
+.pa-value small { font-family:inherit; font-size:.75rem; font-weight:400 }
+.pa-list meter { display:block; width:calc(100% - 44px); height:4px; margin:4px 0 0 44px; border:0; border-radius:8px; overflow:hidden; background:#e5e9d8; appearance:none }
+.pa-list meter::-webkit-meter-bar { background:#e5e9d8; border:0; border-radius:8px }
+.pa-list meter::-webkit-meter-optimum-value { background:#799962; border-radius:8px }
+.pa-list meter::-moz-meter-bar { background:#799962; border-radius:8px }
+.pa-empty { margin:0; padding:20px }
+.pa-tools-head { justify-content:space-between; flex-wrap:wrap }
+.pa-tools-head>div:first-child { flex:1 1 240px }
+.pa-call-total { display:grid; gap:4px; flex:none; text-align:end; padding-inline-start:12px }
+.pa-call-total strong { font:700 1.5rem/1 var(--display); color:var(--ink) }
+.pa-call-total span,.pa-tools thead th { color:var(--muted); font:550 .74rem/1.4 var(--mono) }
+.pa-tools { table-layout:fixed; border-collapse:collapse; width:100% }
+.pa-tools th,.pa-tools td { white-space:normal; text-align:start; padding:10px 20px; border-bottom:1px solid var(--line) }
+.pa-tools thead th { background:var(--panel) }
+.pa-tools tbody th { background:transparent; color:var(--ink) }
+.pa-tools th:last-child,.pa-tools td:last-child { width:9.25rem; text-align:end }
+.pa-tools tbody tr:last-child>* { border-bottom:0 }
+.pa-tools code { font-family:var(--mono); font-weight:400; font-size:.72rem; overflow-wrap:anywhere }
+@media (max-width:1000px) {
+  .pa-stock dl { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:18px }
+  .pa-stock dl>div:nth-child(odd) { border:0 }
+}
+@media (max-width:840px) {
+  .pa-rankings { grid-template-columns:minmax(0,1fr) }
+}
+@media (max-width:540px) {
+  .pa-toolbar { justify-content:space-between }
+  .pa-stock dl { padding-block:16px }
+  .pa-stock dt { align-items:flex-start; font-size:.77rem }
+  .pa-stock dd { margin-top:7px }
+  .pa-content,.pa-rankings { gap:12px }
+  .pa-panel header,.pa-list li,.pa-tools th,.pa-tools td { padding:12px 14px }
+  .pa-tools th:last-child,.pa-tools td:last-child { width:7rem }
+}

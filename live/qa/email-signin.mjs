@@ -41,7 +41,7 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     gateway=createHostedGateway(readHostedConfig({
       AIRPORT_OWNER_ORIGIN:origin,AIRPORT_AGENT_BASE:'https://mcp.example.test',
       AIRPORT_HOSTED_DATA_DIR:dir,AIRPORT_TENANT_SECRET:Buffer.alloc(32,10).toString('base64url'),
-      AIRPORT_AUTH_MODE:'email',AIRPORT_SIGNUP_MODE:'open',AIRPORT_EMAIL_ACCOUNT_ID:'a'.repeat(32),
+      AIRPORT_AUTH_MODE:'email',AIRPORT_SIGNUP_MODE:'open',AIRPORT_BOOTSTRAP_OWNER_EMAIL:'admin@example.test',AIRPORT_EMAIL_ACCOUNT_ID:'a'.repeat(32),
       AIRPORT_EMAIL_FROM:'signin@example.test',AIRPORT_EMAIL_API_TOKEN:'fixture',COMPOSIO_API_KEY:'fixture'
     }),{
       sendCode:async message=>{delivered=message;},
@@ -378,6 +378,44 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         await access.getByText(/Custom · 1 tool allowed/).waitFor();
       });
     }
+    await t.test('only the verified platform owner can open the aggregate dashboard',async ()=>{
+      assert.equal(await page.getByRole('link',{name:'Admin',exact:true}).count(),0);
+      const customerResponse=await ctx.request.get(origin+'/api/admin/overview');
+      assert.ok([403,404].includes(customerResponse.status()));
+      assert.ok([403,404].includes((await ctx.request.get(origin+'/admin')).status()));
+
+      const adminContext=await browser.newContext({ignoreHTTPSErrors:true});
+      try{
+        const admin=await adminContext.newPage();
+        admin.on('pageerror',err=>errors.push(err.message));
+        await admin.goto(origin+'/login');
+        await admin.getByLabel('Email address').fill('admin@example.test');
+        await admin.getByRole('button',{name:'Send code'}).click();
+        const verification=admin.getByLabel('Eight-digit code');
+        await verification.waitFor();
+        await verification.fill(delivered.code);
+        await admin.getByRole('button',{name:'Continue',exact:true}).click();
+        await admin.getByLabel('Display name').fill('Airport operator');
+        await admin.getByRole('button',{name:'Create account',exact:true}).click();
+        const adminLink=admin.getByRole('link',{name:'Admin',exact:true});
+        await adminLink.waitFor();
+        assert.equal(await adminLink.evaluate(el=>el.href),origin+'/admin');
+        const [report]=await Promise.all([
+          admin.waitForResponse(r=>r.url()===origin+'/api/admin/overview'),
+          adminLink.click()
+        ]);
+        assert.equal(report.status(),200);
+        const overview=await report.json();
+        assert.equal(overview.totals.users,2);
+        assert.ok(overview.totals.workspaces>=2);
+        assert.equal(overview.totals.connections,3);
+        await admin.getByRole('heading',{name:'Platform admin',exact:true}).waitFor();
+        await admin.getByText('Registered users',{exact:true}).waitFor();
+        await admin.reload();
+        await admin.getByText('Registered users',{exact:true}).waitFor();
+        assert.equal(admin.url(),origin+'/admin');
+      }finally{await adminContext.close();}
+    });
     await page.getByRole('button',{name:'Account menu for Local Pilot'}).click();
     await page.getByRole('link',{name:'Sign out'}).click();
     await page.getByLabel('Email address').waitFor();

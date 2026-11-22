@@ -375,8 +375,10 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     agents:{name:'Agents',title:'Agents'},
     policies:{name:'Policies',title:'Policies'},
     activity:{name:'Activity',title:'Activity'},
-    account:{name:'Account settings',title:'Account settings'}
+    account:{name:'Account settings',title:'Account settings'},
+    admin:{name:'Admin',title:'Platform admin'}
   };
+  const globalPage=page=>page==='account'||page==='admin';
   window.AirportPages ||= {};
   let mountedKey='',mountedWorkspace='',mountedCatalog=null,mountedModule=null,componentSignature='',requestedAudit='';
   const panelIds=['gate-map','workspace-summary','overview-feed','connections','agents','module-page','mail','muse','permissions','audit'];
@@ -410,7 +412,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function routePath(r,workspace){
     const segments=[r.page,r.id,r.tab,r.detail].filter(Boolean).map(encodeURIComponent);
-    const path=r.page==='account'?'/account':'/w/'+encodeURIComponent(workspace)+'/'+segments.join('/');
+    const path=globalPage(r.page)?'/'+r.page:'/w/'+encodeURIComponent(workspace)+'/'+segments.join('/');
     return path+(r.query.size?'?'+r.query:'');
   }
   function hrefFor(target,workspace){
@@ -420,8 +422,8 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   function navigate(target,workspace){
     const href=hrefFor(target,workspace);
     if(href!==location.pathname+location.search+location.hash){
-      // The global account page can return to the originating workspace even after reload.
-      const entry=href==='/account'?{workspace:workspaceId}:null;
+      // Remember where the owner entered a global page, including across reloads.
+      const entry=globalPage(parseRoute(target).page)?{workspace:workspaceId}:null;
       history.pushState(entry,'',href);
     }
     if(state?.workspaces?.length)render();
@@ -505,7 +507,8 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       agents:r.id?'Access to the '+w.name+' workspace.':'Assistants with access to '+w.name+'.',
       policies:'Choose which tools agents can use in '+w.name+'.',
       activity:'Requests and decisions recorded in '+w.name+'.',
-      account:'Your profile and sign-in details.'
+      account:'Your profile and sign-in details.',
+      admin:'Accounts and usage across Airport.'
     };
     const account=r.page==='connections' && r.id==='pilot-gmail'?{toolkit:'gmail',status:w.status}:connection;
     const pageHeading=$('#page-title');
@@ -522,9 +525,9 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     $('#crumb').textContent=w.name;$('#crumb').title='Switch workspace';
     const connectionTab=r.detail==='advanced'?'Advanced tools':r.tab==='tools'?'Access presets':prettyName(r.tab);
     $('#crumb-section').innerHTML=section&&r.id?`<a href="${esc(hrefFor('#'+r.page))}">${esc(section.name)}</a><b>/</b><span>${esc(r.page==='connections'?connectionTab:r.page==='activity'?'Request':r.page==='agents'?title:'Workspace policy')}</span>`:esc(section?.name||'Page');
-    if(r.page==='account'){
+    if(globalPage(r.page)){
       $('#crumb').textContent='Airport';$('#crumb').title='Return to workspace overview';
-      document.title='Account settings · Airport';
+      document.title=title+' · Airport';
     }
     const actions=[];
     if(account){
@@ -546,7 +549,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       else if(r.page==='connections')actions.push(manageBtn('mail',pilotConnected(w)?'Manage Gmail':'Connect Gmail','',true));
     }
     region('page-actions',[w.id,actions],actions.join(''));
-    for(const link of links){
+    for(const link of document.querySelectorAll('[data-nav]')){
       const active=link.dataset.nav===r.page;
       link.href=hrefFor('#'+link.dataset.nav);link.classList.toggle('selected',active);
       if(active)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
@@ -598,8 +601,47 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       el.innerHTML='<div class="panel feature-empty"><h2>Unavailable in this workspace</h2><p>Select another item from the workspace navigation.</p></div>';
     }
   }
+  let adminAssets;
+  function fetchAdminModule(){
+    if(!adminAssets){
+      const style=document.createElement('link'),script=document.createElement('script');
+      style.rel='stylesheet';style.href='/platform-admin.css';script.src='/platform-admin.js';
+      const loaded=asset=>new Promise((resolve,reject)=>{
+        asset.onload=resolve;
+        asset.onerror=()=>reject(new Error('Could not load the admin dashboard.'));
+      });
+      adminAssets=Promise.all([loaded(style),loaded(script)]).then(()=>{
+        if(typeof window.AirportPlatformAdmin?.render!=='function')throw new Error('The admin dashboard is unavailable.');
+        return window.AirportPlatformAdmin;
+      }).catch(error=>{
+        style.remove();script.remove();adminAssets=null;
+        throw error;
+      });
+      document.head.append(style,script);
+    }
+    return adminAssets;
+  }
+  const adminPage={async render(el,ctx){
+    if(!ctx.isCurrent()||!window.AirportAccount?.isPlatformAdmin())return;
+    if(!adminAssets)el.innerHTML='<p class="empty" role="status">Loading admin dashboard…</p>';
+    try{
+      const module=await fetchAdminModule();
+      if(ctx.isCurrent()&&window.AirportAccount?.isPlatformAdmin())return module.render(el,ctx);
+    }catch{
+      if(!ctx.isCurrent()||!window.AirportAccount?.isPlatformAdmin())return;
+      el.innerHTML='<section class="panel feature-empty"><p role="alert">The admin dashboard could not be loaded.</p><button type="button" class="button minor">Retry</button></section>';
+      el.querySelector('button').onclick=()=>adminPage.render(el,ctx);
+    }
+  }};
   function renderPage(w,r){
+    if(r.page==='admin'&&!window.AirportAccount?.isPlatformAdmin()){
+      // The server independently authorizes the page, its assets and every data request.
+      if(mountedModule)resetPage();
+      renderShell(w,{page:'unavailable'});
+      return;
+    }
     renderShell(w,r);
+    if(r.page==='admin'){renderModule(w,r,adminPage);return;}
     if(r.page==='account'&&window.AirportAccount?.signedIn()){
       window.AirportAccount.settings(reveal('module-page'));
       return;
@@ -654,7 +696,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(!state?.workspaces?.some(w=>w.id===id))return;
     testResult=null;message('');closeDialog();dismissRail();
     const page=parseRoute().page;
-    navigate('#'+(Object.hasOwn(sections,page)&&page!=='account'?page:'overview'),id);
+    navigate('#'+(Object.hasOwn(sections,page)&&!globalPage(page)?page:'overview'),id);
   }
   function renderWorkspaceMenu(w){
     const key=[w.id,state.workspaces.map(s=>[s.id,s.name]),supportsCatalog()];
@@ -666,7 +708,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     updateRail();
   }
   function shellAction(name){
-    if(name==='crumb'&&parseRoute().page==='account'){navigate('#overview');return;}
+    if(name==='crumb'&&globalPage(parseRoute().page)){navigate('#overview');return;}
     if(name==='dismiss'){dismissRail(true);return;}
     if(name==='mobile'){drawer=true;updateRail(true);return;}
     if(name==='crumb'&&mobileRail.matches)drawer=true;
@@ -715,10 +757,11 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   function render(){
     if(!state?.workspaces?.length){network('The gateway has no available workspaces.');return;}
     const r=parseRoute();
-    const wanted=r.workspace || (r.page==='account'?history.state?.workspace:'');
-    if(wanted&&state.workspaces.some(w=>w.id===wanted))workspaceId=wanted;
+    const wanted=r.workspace,remembered=globalPage(r.page)?history.state?.workspace:'';
+    const requested=state.workspaces.find(w=>w.id===(wanted||remembered));
+    if(requested)workspaceId=requested.id;
     if(!current())workspaceId=state.workspaces[0].id;
-    const w=current(),missing=Boolean(wanted&&!state.workspaces.some(item=>item.id===wanted));
+    const w=current(),missing=Boolean(wanted&&!requested);
     const autoAdd=!missing&&supportsCatalog()&&r.page==='agents'&&!r.id&&r.query.get('add')==='1';
     if(autoAdd)r.query.delete('add');
     const url=location.pathname+location.search+location.hash;
@@ -726,8 +769,8 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     // and dot segments in a legacy bookmark would change meaning in a pathname.
     const routable=Object.hasOwn(sections,r.page)&&[r.id,r.tab].every(segment=>segment!=='.'&&segment!=='..');
     const key=missing||!routable?url:routePath(r,w.id);
-    if(key!==url || (r.page==='account'&&!missing&&history.state?.workspace!==w.id)){
-      history.replaceState(r.page==='account'?{workspace:w.id}:null,'',key);
+    if(key!==url || (globalPage(r.page)&&!missing&&history.state?.workspace!==w.id)){
+      history.replaceState(globalPage(r.page)?{workspace:w.id}:null,'',key);
     }
     const changed=key!==mountedKey||w.id!==mountedWorkspace||mountedCatalog!==state.catalogVersion;
     if(w.id!==mountedWorkspace)returningToConsole=true;
@@ -1155,7 +1198,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const link=e.target.closest('a[href]');
     const plainClick=e.button===0&&!e.defaultPrevented&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!e.altKey;
     if(link && plainClick && !link.hasAttribute('download') && (!link.target||link.target==='_self') &&
-      link.origin===location.origin && !link.hash && (link.pathname.startsWith('/w/')||link.pathname==='/account')){
+      link.origin===location.origin && !link.hash && (link.pathname.startsWith('/w/')||link.pathname==='/account'||link.pathname==='/admin')){
       e.preventDefault();dismissRail();navigate(link.pathname+link.search);return;
     }
     const control=e.target.closest('[data-manage]');
@@ -1246,7 +1289,6 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       wire?.classList.toggle('inspect-wire',type==='pointerover'||type==='focusin');
     });
   }
-  const links=[...document.querySelectorAll('[data-nav]')];
   window.addEventListener('hashchange',()=>{if(current())render();});
   window.addEventListener('popstate',()=>{if(current())render();});
   async function checkPendingApp() {

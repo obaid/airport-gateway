@@ -44,6 +44,8 @@ Set `AIRPORT_SIGNUP_MODE=open` for self-service registration. New customers veri
 
 To bind the administrator, set `AIRPORT_BOOTSTRAP_OWNER_EMAIL` to the verified address and `AIRPORT_BOOTSTRAP_OWNER_TENANT` to its exact 64-character tenant key. The signed-in account API exposes this as `identity.accountKey`. Include the account registry (`accounts.sqlite3`), authentication data (`authentication.sqlite3`) and the tenant databases in consistent backups, with the stable tenant secret stored separately.
 
+The configured owner can open **Admin** at `/admin` to see registered users, workspaces, active connections, and active agent credentials. The integration ranking counts active connections. Agent and tool rankings count successful calls to connected apps in the past 30 days, using retained activity that identifies the caller as an agent. Each refresh reads aggregate counts from the platform’s own databases.
+
 Use Node.js 22.16 or later with built-in `node:sqlite` support. From the repository root, install the locked dependency and run the isolated tests.
 
 ```sh

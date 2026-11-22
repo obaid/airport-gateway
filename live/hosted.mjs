@@ -12,6 +12,7 @@ import { createToolRunner, makeAgentHandler } from './agent.mjs';
 import { canonicalEmail, createAccounts } from './accounts.mjs';
 import { createCodeSender, createEmailAuth, readEmailConfig, requestAddress } from './email-auth.mjs';
 import { createStore } from './store.mjs';
+import { createPlatformOverview } from './platform-admin.mjs';
 
 const gatewayRoutes = new Set(['/mcp','/api/gmail/inbox-counts','/api/connections','/airport/connect','/pair/start','/pair/token','/agents/register']);
 
@@ -107,6 +108,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
   if (!lstatSync(dir).isDirectory()) throw Error('The tenant storage path must be a directory.');
   chmodSync(dir,0o700);
   const accounts=createAccounts(join(config.dataDir,'accounts.sqlite3'),config);
+  const platformOverview=createPlatformOverview(dir,()=>accounts.countUsers());
   const emailAuth = config.authMode==='email' ? createEmailAuth(join(config.dataDir,'authentication.sqlite3'),{
     secret:config.secret,sendCode:sendCode || createCodeSender(config.emailConfig),
     verifiedIdentity(email) {
@@ -210,7 +212,10 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
       'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});
     res.end(JSON.stringify(payload));
   };
-  const session=(person,account)=>({identity:{email:person.email,accountKey:person.tenant},account,signupMode:config.signupMode,authMode:config.authMode});
+  const isPlatformAdmin=(person,account)=>Boolean(config.bootstrapEmail && account && account.email===config.bootstrapEmail &&
+    person.email===config.bootstrapEmail && (!config.bootstrapTenant || config.bootstrapTenant===person.tenant));
+  const session=(person,account)=>({identity:{email:person.email,accountKey:person.tenant},account,
+    isPlatformAdmin:isPlatformAdmin(person,account),signupMode:config.signupMode,authMode:config.authMode});
   async function authAPI(req,res,target) {
     if (req.method!=='POST') return errorResponse(res,404);
     const form=await readOwnerBody(req,config.ownerOrigin);
@@ -283,11 +288,14 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
       if (await serveBrandAsset(req,res,target)) return;
       if(target==='/welcome' && ['GET','HEAD'].includes(req.method))return await servePublicPage(req,res,'welcome');
       if(emailAuth && target.startsWith('/api/auth/')) return await authAPI(req,res,target);
-      const consolePage=isConsolePage(target.split('?',1)[0]);
+      const pathname=target.split('?',1)[0];
+      const consolePage=isConsolePage(pathname);
+      const adminPage=pathname==='/admin'||pathname==='/admin/';
+      const adminAsset=pathname==='/platform-admin.css'||pathname==='/platform-admin.js';
       const person = await identity(req);
       if(emailAuth && !person && ['GET','HEAD'].includes(req.method)) {
         // Sign in at the bookmarked address. Reloading it after verification opens the console.
-        if(target==='/login' || consolePage)return await servePublicPage(req,res,'login');
+        if(target==='/login' || consolePage || adminPage)return await servePublicPage(req,res,'login');
         if(target==='/')return res.writeHead(303,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',Location:'/login'}).end();
       }
       if (!person) return errorResponse(res,401);
@@ -295,11 +303,25 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
         res.writeHead(303,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',Location:'/'}).end();
         return;
       }
-      if(await serveOwnerAsset(req,res,consolePage?'/':target))return;
+      if(!adminPage && await serveOwnerAsset(req,res,consolePage?'/':target))return;
       const tenant=person.tenant;
       const legacyFile=join(dir,tenant+'.sqlite3');
       const account=accounts.resolve(person,lstatSync(legacyFile,{throwIfNoEntry:false})?.isFile()===true);
       if (target==='/api/account' || target.startsWith('/api/account/')) return await accountAPI(req,res,target,person,account);
+      if(adminPage || adminAsset || pathname==='/api/admin/overview'){
+        if(!isPlatformAdmin(person,account))return errorResponse(res,403,'Platform administrator access required.');
+        if(!['GET','HEAD'].includes(req.method))return errorResponse(res,404);
+        if(adminPage)return await serveOwnerAsset(req,res,'/');
+        if(adminAsset){
+          const contents=await readFile(new URL('./ui'+pathname,import.meta.url));
+          res.writeHead(200,{'Content-Type':pathname.endsWith('.js')?'text/javascript':'text/css','Cache-Control':'no-store',
+            'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});
+          return res.end(req.method==='HEAD'?undefined:contents);
+        }
+        if(req.method!=='GET')return errorResponse(res,404);
+        try{return sendJSON(res,200,await platformOverview());}
+        catch{return errorResponse(res,503,'Platform overview is temporarily unavailable.');}
+      }
       if (!account) return errorResponse(res,403,'Create your Airport account first.','account_required');
       const isVerifier = config.verifierPath && target.split('?')[0]===config.verifierPath;
       entry = acquire(tenant,!isVerifier);
