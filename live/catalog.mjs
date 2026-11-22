@@ -33,7 +33,8 @@ function page(value, normalize) {
   if (!Array.isArray(value?.items) || (value.next_cursor != null && typeof value.next_cursor !== 'string')) {
     fail('Composio returned an invalid catalog page.');
   }
-  return {items:value.items.map(normalize),nextCursor:value.next_cursor || null};
+  return {items:value.items.map(normalize),nextCursor:value.next_cursor || null,
+    ...(Number.isSafeInteger(value.total_items)?{total:value.total_items}:{})};
 }
 
 function toolkitInfo(row) {
@@ -75,7 +76,7 @@ function toolInfo(row) {
   return {
     slug:key,name:row.name || key,description:row.description || '',toolkit:slug(row.toolkit?.slug).toLowerCase(),
     inputSchema:namedSchema(row.input_parameters),version:version(row.version),noAuth:row.no_auth === true,
-    tags:strings(row.tags),scopes:strings(row.scopes)
+    tags:strings(row.tags),scopes:strings(row.scopes),deprecated:row.is_deprecated===true
   };
 }
 
@@ -145,9 +146,9 @@ export function createCatalog(apiKey, {authConfigs={},discoverProjectConfigs=fal
     fail('This toolkit is unavailable in this Composio project.');
   }
 
-  async function listTools({toolkit,search,cursor} = {}) {
+  async function listTools({toolkit,search,cursor,bulk=false} = {}) {
     const expected = toolkit ? slug(toolkit).toLowerCase() : null;
-    const result = page(await request('/tools'+query({toolkit_slug:expected,query:search,cursor,limit:'50'})),toolInfo);
+    const result = page(await request('/tools'+query({toolkit_slug:expected,query:search,cursor,limit:bulk?'500':'50'})),toolInfo);
     if (expected && result.items.some(item => item.toolkit !== expected)) fail('Composio returned tools from another toolkit.');
     return result;
   }

@@ -2,6 +2,7 @@
 .rg-page .rg-panel { border-radius:9px }
 .rg-page .rg-heading { padding:15px 19px }
 .rg-entity,.rg-request { width:100%; text-align:left }
+.rg-page .rg-meta strong.rg-setup { color:#624e1d; font-weight:650; white-space:normal }
 .rg-entity .rg-mark.native { background:#f3f4ef }
 .rg-agent-icon { display:grid; place-items:center; color:var(--muted) }
 .actor-with-icon { display:flex; align-items:center; gap:7px; min-width:0 }

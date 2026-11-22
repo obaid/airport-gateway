@@ -117,6 +117,14 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
   transaction(()=>{
     if (!db.prepare('PRAGMA table_info(workspace_agents)').all().some(c=>c.name==='clientType'))
       db.exec('ALTER TABLE workspace_agents ADD COLUMN clientType TEXT');
+    if (!db.prepare('PRAGMA table_info(catalog_connections)').all().some(c=>c.name==='accessMode')) {
+      db.exec(`ALTER TABLE catalog_connections ADD COLUMN accessMode TEXT;
+        ALTER TABLE catalog_connections ADD COLUMN accessRevision INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE catalog_connections ADD COLUMN appliedPreview TEXT;
+        ALTER TABLE catalog_tool_policies ADD COLUMN presetClass TEXT;
+        UPDATE catalog_connections SET accessMode='custom' WHERE EXISTS
+          (SELECT 1 FROM catalog_tool_policies WHERE connection=catalog_connections.id)`);
+    }
   });
   // A process interruption leaves an honest record of the attempted lookup.
   const recover = () => transaction(() => {
@@ -188,9 +196,12 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     });
   }
   function blockTool(ws,id,slug) {
-    getConnection(ws,id);
     if(typeof slug!=='string' || !slugPattern.test(slug)) fail('Select a tool.');
-    db.prepare('DELETE FROM catalog_tool_policies WHERE connection=? AND slug=?').run(id,slug);
+    return transaction(()=>{
+      getConnection(ws,id);
+      db.prepare('DELETE FROM catalog_tool_policies WHERE connection=? AND slug=?').run(id,slug);
+      setAccessMode.run('custom',null,id);
+    });
   }
   function listToolPolicies(ws,id) {
     getConnection(ws,id);
@@ -199,26 +210,54 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
   }
   function listConnections(ws) {
     get(ws);
-    return db.prepare('SELECT id,workspace,toolkit,label,status FROM catalog_connections WHERE workspace=? ORDER BY at,id').all(ws)
+    return db.prepare('SELECT id,workspace,toolkit,label,status,accessMode FROM catalog_connections WHERE workspace=? ORDER BY at,id').all(ws)
       .map(c=>({...c,tools:listToolPolicies(ws,c.id)}));
   }
-  function setToolPolicy(ws,id,tool,enabled) {
-    const c=getConnection(ws,id);
-    if (!tool||typeof tool.slug!=='string'||typeof enabled!=='boolean') fail('Select an operation and its policy.');
+  const setAccessMode=db.prepare('UPDATE catalog_connections SET accessMode=?,appliedPreview=?,accessRevision=accessRevision+1 WHERE id=?');
+  const pin=db.prepare(`INSERT INTO catalog_tool_policies(connection,slug,version,name,description,schemaJson,tagsJson,mcpName,revision,presetClass)
+    VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(connection,slug) DO UPDATE SET version=excluded.version,name=excluded.name,
+    description=excluded.description,schemaJson=excluded.schemaJson,tagsJson=excluded.tagsJson,mcpName=excluded.mcpName,
+    revision=excluded.revision,presetClass=excluded.presetClass WHERE
+    (version,name,description,schemaJson,tagsJson,presetClass) IS NOT
+    (excluded.version,excluded.name,excluded.description,excluded.schemaJson,excluded.tagsJson,excluded.presetClass)`);
+  function pinTool(c,tool,presetClass) {
     if (tool.toolkit?.toLowerCase()!==c.toolkit) fail('This operation belongs to a different toolkit.',409);
-    if (!enabled) {
-      db.prepare('DELETE FROM catalog_tool_policies WHERE connection=? AND slug=? AND version=?').run(id,tool.slug,tool.version);
-      return;
-    }
     if(c.status!=='active') fail('Activate this connection before enabling tools.',409);
     const reason=catalogToolRestriction(tool);
     if(reason) fail(reason,403);
-    const mcpName='c_'+hash(JSON.stringify([id,tool.slug,tool.version])).slice(0,22)+'_'+tool.slug.toLowerCase().slice(0,38);
+    const mcpName='c_'+hash(JSON.stringify([c.id,tool.slug,tool.version])).slice(0,22)+'_'+tool.slug.toLowerCase().slice(0,38);
     const schema=JSON.stringify(tool.inputSchema), tags=JSON.stringify(Array.isArray(tool.tags)?tool.tags.filter(t=>typeof t==='string'):[]);
-    db.prepare(`INSERT INTO catalog_tool_policies(connection,slug,version,name,description,schemaJson,tagsJson,mcpName,revision) VALUES(?,?,?,?,?,?,?,?,?)
-      ON CONFLICT(connection,slug) DO UPDATE SET version=excluded.version,name=excluded.name,description=excluded.description,schemaJson=excluded.schemaJson,tagsJson=excluded.tagsJson,mcpName=excluded.mcpName,revision=excluded.revision`)
-      .run(id,tool.slug,tool.version,String(tool.name||tool.slug).slice(0,200),String(tool.description||'').slice(0,4000),schema,tags,mcpName,randomUUID());
+    pin.run(c.id,tool.slug,tool.version,String(tool.name||tool.slug).slice(0,200),String(tool.description||'').slice(0,4000),schema,tags,mcpName,randomUUID(),presetClass);
     return {slug:tool.slug,version:tool.version,name:tool.name||tool.slug,mcpName,enabled:true,allowed:true};
+  }
+  function setToolPolicy(ws,id,tool,enabled,expectedRevision) {
+    if (!tool||typeof tool.slug!=='string'||typeof enabled!=='boolean') fail('Select an operation and its policy.');
+    return transaction(()=>{
+      const c=getConnection(ws,id);
+      if(expectedRevision!==undefined && c.accessRevision!==expectedRevision)fail('Tool access changed. Refresh and try again.',409);
+      if(tool.toolkit?.toLowerCase()!==c.toolkit)fail('This operation belongs to a different toolkit.',409);
+      let result;
+      if(enabled)result=pinTool(c,tool,null);
+      else db.prepare('DELETE FROM catalog_tool_policies WHERE connection=? AND slug=? AND version=?').run(id,tool.slug,tool.version);
+      setAccessMode.run('custom',null,id);
+      return result;
+    });
+  }
+  function applyConnectionAccess(ws,id,expectedRevision,mode,selection,previewId) {
+    return transaction(()=>{
+      const c=getConnection(ws,id);
+      if(c.status==='active' && c.accessMode===mode && c.appliedPreview===previewId)
+        return {ok:true,mode,allowed:listToolPolicies(ws,id).length};
+      if(c.status!=='active' || c.accessRevision!==expectedRevision)fail('This connection or its access changed. Review the choices again.',409);
+      if(mode!=='custom'){
+        const selected=new Set(selection.map(({tool})=>tool.slug));
+        const remove=db.prepare('DELETE FROM catalog_tool_policies WHERE connection=? AND slug=?');
+        for(const {slug} of listToolPolicies(ws,id))if(!selected.has(slug))remove.run(id,slug);
+        for(const {tool,kind} of selection)pinTool(c,tool,kind);
+      }
+      setAccessMode.run(mode,previewId,id);
+      return {ok:true,mode,allowed:listToolPolicies(ws,id).length};
+    });
   }
   const approvedSQL=`SELECT t.*,c.toolkit,c.label,c.owner,c.account,c.workspace FROM catalog_tool_policies t
     JOIN catalog_connections c ON c.id=t.connection WHERE c.workspace=? AND c.status='active'`;
@@ -417,7 +456,7 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       }))
   });
   return {
-    createWorkspace,createConnection,attachConnection,activateConnection,getConnection,listConnections,disableConnection,listToolPolicies,blockTool,setToolPolicy,resolveTool,approvedTools,
+    createWorkspace,createConnection,attachConnection,activateConnection,getConnection,listConnections,disableConnection,listToolPolicies,blockTool,setToolPolicy,applyConnectionAccess,resolveTool,approvedTools,
     issueAgentGrant,revokeAgentGrant,listAgentGrants,canUseCatalog,isGrantActive,...enrollment,
     get,state,begin,activate,issue,issueConnectorGrant,pairStart,pairToken,approve,revoke,recover,log,finish,close:()=>db.close(),
     getPolicy(ws){return get(ws).policy;},

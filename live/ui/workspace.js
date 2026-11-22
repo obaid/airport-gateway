@@ -849,7 +849,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(!c || !['active','disabled'].includes(c.status))return;
     closeDialog();
     navigate('#connections/'+encodeURIComponent(c.id)+'/settings',w.id);
-    message(c.status==='active'?(c.label||toolkitName(c.toolkit))+' connected to '+w.name+'.':'Sign-in did not complete. Connect the app again to retry.',c.status!=='active');
+    message(c.status==='active'?(c.label||toolkitName(c.toolkit))+' connected to '+w.name+'. Choose agent access below.':'Sign-in did not complete. Connect the app again to retry.',c.status!=='active');
   }
   const scopedApp=(w,id)=>workspaceApps(w).find(c=>String(c.id)===String(id));
   const scopedAgent=(w,id)=>agentGrants(w).find(a=>String(a.id)===String(id));
@@ -916,7 +916,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   function openToolkit(item){
     if(!item||typeof item.slug!=='string'||!/^[_a-z0-9-]{1,120}$/i.test(item.slug)||!supportsCatalog())return;
     const w=current();
-    showDialog('Connect '+(item.name||toolkitName(item.slug)),`<form id="toolkit-add" class="fields" data-toolkit="${esc(item.slug)}"><p class="sub">${esc(item.description||'Choose an account for this app in '+w.name+'.')}</p>
+    showDialog('Connect '+(item.name||toolkitName(item.slug)),`<form id="toolkit-add" class="fields" data-toolkit="${esc(item.slug)}"><p class="sub">Connect an account to ${esc(w.name)}, then choose which tools your agents can use.</p>
       ${manageField('Connection label','<input name="label" maxlength="80" required autocomplete="off" value="'+esc(item.name||toolkitName(item.slug))+'">')}
       ${!state.ready?'<p class="hint">Airport hasn’t enabled sign-in for this app yet.</p>':''}
       ${actionRow(manageBtn('catalog','Back to catalog')+(state.ready?'<button type="submit" class="button primary">Connect app</button>':''))}</form>`);
@@ -942,12 +942,17 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     try{const u=new URL(state?.localMcpURL);if(['127.0.0.1','localhost','[::1]'].includes(u.hostname)&&['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&!u.search&&!u.hash)return u.href;}catch{}
     return '';
   }
+  function discoveryInstructions(endpoint){
+    if(!endpoint)return '';
+    const base=endpoint.replace(/\/mcp$/,'');
+    const https=endpoint.startsWith('https://')?` For an HTTPS connector, GET ${base}/api/connections with the same bearer token.`:'';
+    return `For MCP, connect to ${endpoint} with bearer authentication and call tools/list. To list connected apps and their allowed tool counts, call airport_list_connections.${https}`;
+  }
   function newAgentSecret(w,r){
     if(!r.token||typeof r.token!=='string')throw new Error('The server did not return a credential. Review the agent before trying again.');
-    const endpoint=agentEndpoint(),remote=endpoint.startsWith('https://')?endpoint.replace(/\/mcp$/,''):'';
+    const endpoint=agentEndpoint();
     const setup=[`Connect to Airport for my ${w.name} workspace using bearer authentication. Ask me to enter the credential in your secure token field.`,describeGrant(r.expiresAt),
-      endpoint?`If you support MCP, connect to ${endpoint} and call tools/list.`:'',
-      remote && w.status==='active'?`For an HTTPS connector with inbox counts access, GET ${remote.replace(/\/+$/,'')}/api/gmail/inbox-counts.`:'',
+      discoveryInstructions(endpoint),
       'If your app cannot use these connection methods, tell me which methods it supports.'].filter(Boolean).join(' ');
     showDialog('Agent credential issued',`<p class="actor-with-icon">${agentLogo(r.actor,24,r.clientType)}<span>${esc(r.actor)} · ${esc(w.name)}. ${esc(describeGrant(r.expiresAt))}</span></p>
       ${endpoint?formField('MCP endpoint','<input type="text" readonly value="'+esc(endpoint)+'">'):''}
@@ -976,8 +981,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const access=describeEnrollment(result.lifetime||selectedLifetime);
     const setup=`Register as an agent for my ${w.name} workspace in Airport. `+
       (result.name?`I chose the name ${JSON.stringify(result.name)}. `:'Choose your own agent name. ')+
-      `POST JSON to ${base}/agents/register with this body: ${JSON.stringify(result.name?{invitation:result.invitation,name:result.name}:{invitation:result.invitation,name:'<your chosen name>'})}. Redeem the one-use invitation by ${result.expiresAt}. ${access} Save the returned bearer token in your private credential store and keep it out of chat. If you support MCP, connect to ${endpoint} with bearer authentication and call tools/list. `+
-      (w.status==='active'?`If you use HTTPS connectors, GET ${base}/api/gmail/inbox-counts for authorized inbox totals.`:'If you use another connector type, tell me which transport it supports.');
+      `POST JSON to ${base}/agents/register with this body: ${JSON.stringify(result.name?{invitation:result.invitation,name:result.name}:{invitation:result.invitation,name:'<your chosen name>'})}. Redeem the one-use invitation by ${result.expiresAt}. ${access} Save the returned bearer token in your private credential store and keep it out of chat. ${discoveryInstructions(endpoint)}`;
     showDialog('Agent setup prompt',`<p class="actor-with-icon">${invitationLogo(result,24)}<span>Paste this prompt into ${result.name?esc(result.name):'the agent you want to connect'}. It contains a one-use invitation valid for 10 minutes.</span></p>
       ${formField('Setup prompt for '+(result.name||'your agent'),'<textarea id="enrollment-prompt" readonly rows="7" spellcheck="false"></textarea>')}
       <p class="hint">Invitation expires ${esc(when(result.expiresAt))}. ${esc(access)}</p>
@@ -1175,7 +1179,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
         }else{
           await refresh();
           if(!dialog.open || !f.isConnected || workspaceId!==w.id)return;
-          closeDialog();navigate('#connections/'+encodeURIComponent(r.connectionId)+'/settings',w.id);message('Connection added.');
+          closeDialog();navigate('#connections/'+encodeURIComponent(r.connectionId)+'/settings',w.id);message('Connection added. Choose agent access below.');
         }
       });return;
     }

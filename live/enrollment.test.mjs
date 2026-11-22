@@ -103,7 +103,7 @@ test('public registration is an exact JSON POST with no workspace override or do
   const fresh=s.issueAgentGrant(empty,'Desk');
   const resultList=await fetch(base+'/mcp',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+fresh.token},
     body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})});
-  assert.deepEqual((await resultList.json()).result.tools,[]);
+  assert.deepEqual((await resultList.json()).result.tools.map(t=>t.name),['airport_list_connections']);
   const url=base+'/agents/register', invite=s.issueAgentInvitation('work','Desk','forever');
   const send=(value,headers={})=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(value)});
   assert.equal((await fetch(url)).status,405);

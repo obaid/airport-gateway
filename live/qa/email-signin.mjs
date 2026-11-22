@@ -27,6 +27,12 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     const origin='https://airport-owner.test:'+tls.address().port;
     let delivered;
     const githubAuthorizations=new Map();
+    const githubTools=[
+      ['GITHUB_LIST_REPOSITORIES','List repositories','readOnlyHint'],
+      ['GITHUB_CREATE_ISSUE','Create issue','createHint'],
+      ['GITHUB_DELETE_REPOSITORY','Delete repository','destructiveHint']
+    ].map(([slug,name,tag])=>({toolkit:'github',slug,name,description:name,
+      tags:[tag],scopes:[],version:'20261101_00',inputSchema:{type:'object',properties:{},additionalProperties:false}}));
     gateway=createHostedGateway(readHostedConfig({
       AIRPORT_OWNER_ORIGIN:origin,AIRPORT_AGENT_BASE:'https://mcp.example.test',
       AIRPORT_HOSTED_DATA_DIR:dir,AIRPORT_TENANT_SECRET:Buffer.alloc(32,10).toString('base64url'),
@@ -36,6 +42,11 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       sendCode:async message=>{delivered=message;},provider:{},
       catalog:{
         listToolkits:async()=>({items:[{slug:'github',name:'GitHub',authSchemes:['OAUTH2']}],nextCursor:null}),
+        listTools:async({toolkit})=>{
+          assert.equal(toolkit,'github');
+          return {items:githubTools,nextCursor:null};
+        },
+        getTool:async slug=>githubTools.find(tool=>tool.slug===slug),
         start:async({owner,toolkit,callbackURL})=>{
           assert.equal(toolkit,'github');
           const accountId='ca_browser_'+(githubAuthorizations.size+1);
@@ -187,6 +198,36 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         assert.equal(await page.locator('.cp-label-value').textContent(),label);
         assert.equal(await page.locator('#workspace-name').textContent(),'Work');
         assert.equal(await page.locator('dialog[open]').count(),0);
+        const access=page.locator('[data-access-setup]');
+        assert.equal(await access.locator('[data-access-preset="read-only"]').isChecked(),true);
+        await access.getByText('1 tool will be allowed.',{exact:true}).waitFor();
+        if(!returnsToAirport)return;
+
+        const applyPreset=async mode=>{
+          await access.locator('[data-access-preset="'+mode+'"]').check();
+          const [saved]=await Promise.all([
+            page.waitForResponse(r=>r.url()===origin+'/api/connection-access-apply'),
+            access.locator('[data-access-apply]').click()
+          ]);
+          assert.equal(saved.status(),200);
+          return saved.json();
+        };
+        for(const [mode,expected] of [['read-only',1],['write-only',1],['read-write',2]]){
+          const result=await applyPreset(mode);
+          assert.equal(result.allowed,expected);
+          await access.getByRole('button',{name:'Change access'}).click();
+        }
+        await applyPreset('custom');
+        await page.waitForURL(settings.replace('/settings?','/tools?'));
+        const toolControl=slug=>page.locator('[data-cp-tool="'+slug+'"]');
+        assert.equal(await toolControl('GITHUB_LIST_REPOSITORIES').inputValue(),'allow');
+        assert.equal(await toolControl('GITHUB_CREATE_ISSUE').inputValue(),'allow');
+        assert.equal(await toolControl('GITHUB_DELETE_REPOSITORY').inputValue(),'block');
+        await toolControl('GITHUB_CREATE_ISSUE').selectOption('block');
+        await page.getByRole('button',{name:'Save changes'}).click();
+        await page.getByText('1 change saved.',{exact:true}).waitFor();
+        await page.goto(settings);
+        await access.getByText(/Custom · 1 tool allowed/).waitFor();
       });
     }
     await page.getByRole('button',{name:'Account menu for Local Pilot'}).click();

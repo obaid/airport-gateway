@@ -127,8 +127,8 @@ test('actual MCP entry points expose only permitted tools; return authorized res
     const res=await fetch('http://127.0.0.1:'+server.address().port+'/mcp',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
     return res.json();
   };
-  assert.deepEqual((await rpc(work.token,'tools/list',{})).result.tools.map(v=>v.name),[enabled.mcpName]);
-  assert.deepEqual((await rpc(personal.token,'tools/list',{})).result.tools.map(v=>v.name),[foreign.mcpName]);
+  assert.deepEqual((await rpc(work.token,'tools/list',{})).result.tools.map(v=>v.name),[enabled.mcpName,'airport_list_connections']);
+  assert.deepEqual((await rpc(personal.token,'tools/list',{})).result.tools.map(v=>v.name),[foreign.mcpName,'airport_list_connections']);
   const call=(token,args,name=enabled.mcpName)=>rpc(token,'tools/call',{name,arguments:args});
   assert((await call(personal.token,{query:sent})).result.isError);
   assert((await call(work.token,{query:sent,another:sent})).result.isError);
@@ -150,6 +150,55 @@ test('actual MCP entry points expose only permitted tools; return authorized res
   afterPost=()=>s.revokeAgentGrant('work',work.id);
   const changed=(await call(work.token,{query:sent})).result;
   assert.equal(changed.isError,true);assert(!JSON.stringify(changed).includes(received));assert.equal(posts,2);
+});
+
+test('agent inventory reports active connections in its workspace and audits the same metadata over MCP and HTTPS', async t => {
+  const s = setup(t);
+  const listed = connect(s,'personal','ca_private_notion');
+  connect(s,'personal','ca_private_github','github');
+  connect(s,'work','ca_work_calendar','calendar');
+  s.createConnection('personal',{toolkit:'slack',label:'Still connecting'});
+  const removed = connect(s,'personal','ca_disabled','dropbox');
+  s.disableConnection('personal',removed.id);
+  const pilot = s.begin('personal','private@example.test');
+  s.attach('personal',pilot.attempt,'ca_private_gmail');
+  s.activate('personal',pilot.attempt,'private@example.test');
+  s.setToolPolicy('personal',listed.id,tool,true);
+  const invite = s.issueAgentInvitation('personal','Grokbot');
+  const named = s.registerAgent(invite.invitation);
+  const legacy = s.issueConnectorGrant('personal');
+  const run = createToolRunner({store:s,getProvider:()=>assert.fail('Listing connections must never call a provider')});
+  const server = createServer(makeAgentHandler({store:s,run,publicURL:'https://example.test'}));
+  server.listen(0,'127.0.0.1');
+  await once(server,'listening');
+  t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
+  const base = 'http://127.0.0.1:'+server.address().port;
+  const get = token => fetch(base+'/api/connections',{headers:{authorization:'Bearer '+token}});
+  const request = (token,args={}) => fetch(base+'/mcp',{method:'POST',headers:{
+    authorization:'Bearer '+token,'content-type':'application/json'
+  },body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'airport_list_connections',arguments:args}})});
+  const expected = [
+    {label:'Gmail inbox',toolkit:'gmail',allowedToolCount:0},
+    {label:'Selected account',toolkit:'notion',allowedToolCount:1},
+    {label:'Selected account',toolkit:'github',allowedToolCount:0}
+  ];
+  const data = (await (await request(named.token)).json()).result.structuredContent;
+  assert.equal(data.workspace,'Personal');
+  const order = (a,b)=>a.toolkit.localeCompare(b.toolkit);
+  assert.deepEqual([...data.connections].sort(order),expected.sort(order));
+  assert.deepEqual(await (await get(named.token)).json(),data);
+  assert.equal((await (await request(named.token,{workspace:'work'})).json()).error.code,-32602);
+  const audit = s.state().logs.filter(l=>l.tool==='airport_list_connections');
+  assert.equal(audit.length,2);
+  assert(audit.every(l=>l.workspace==='personal' && l.actor==='Grokbot' && l.providerCalled===false && l.outcome==='Allowed'));
+  assert.deepEqual(audit.find(l=>l.exchange.channel==='http').exchange.response,data);
+  assert.deepEqual(audit.find(l=>l.exchange.channel==='mcp').exchange.response.structuredContent,data);
+  s.blockTool('personal',listed.id,tool.slug);
+  assert.equal((await (await get(named.token)).json()).connections.find(c=>c.toolkit==='notion').allowedToolCount,0);
+  assert.equal((await get(legacy.token)).status,403);
+  assert.equal((await (await request(legacy.token)).json()).result.isError,true);
+  s.revokeAgentGrant('personal',s.authenticate(named.token).id);
+  assert.equal((await get(named.token)).status,401);
 });
 
 test('workspace accounts, approved tool versions, and named secret hashes survive a restart',t=>{
@@ -196,11 +245,11 @@ test('an explicit catalog Gmail send permission is scoped to named agents, that 
   const list=async token=>(await rpc(token,'tools/list')).tools.map(v=>v.name);
   const args={to:'dummy@example.test',body:'synthetic private text'};
   const call=(token,name)=>rpc(token,'tools/call',{name,arguments:args});
-  assert.deepEqual(await list(agent.token),['gmail_inbox_counts']);
+  assert.deepEqual(await list(agent.token),['gmail_inbox_counts','airport_list_connections']);
   assert.deepEqual(await list(legacy.token),['gmail_inbox_counts']);
   assert((await call(agent.token,'gmail_send_email')).isError);
   const policy=s.setToolPolicy(ws,c.id,send,true);
-  assert.deepEqual(await list(agent.token),['gmail_inbox_counts',policy.mcpName]);
+  assert.deepEqual(await list(agent.token),['gmail_inbox_counts',policy.mcpName,'airport_list_connections']);
   assert.deepEqual(s.listToolPolicies(ws,second.id),[]);
   assert.deepEqual(await list(legacy.token),['gmail_inbox_counts']);
   assert((await call(legacy.token,policy.mcpName)).isError);

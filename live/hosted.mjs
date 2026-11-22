@@ -13,7 +13,7 @@ import { canonicalEmail, createAccounts } from './accounts.mjs';
 import { createCodeSender, createEmailAuth, readEmailConfig, requestAddress } from './email-auth.mjs';
 import { createStore } from './store.mjs';
 
-const gatewayRoutes = new Set(['/mcp','/api/gmail/inbox-counts','/airport/connect','/pair/start','/pair/token','/agents/register']);
+const gatewayRoutes = new Set(['/mcp','/api/gmail/inbox-counts','/api/connections','/airport/connect','/pair/start','/pair/token','/agents/register']);
 
 function httpsBase(value,name,allowPath) {
   let url;

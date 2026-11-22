@@ -537,6 +537,9 @@ test('Airport email login preserves verified accounts, host isolation, workspace
   const endpoint=new URL(publicURL).pathname+'/mcp';
   assert.equal((await app.send(agentHost,endpoint,{'content-type':'application/json',...owner},rpc)).status,401);
   assert.equal((await app.send(agentHost,endpoint,{'content-type':'application/json',authorization:'Bearer '+grant.token},rpc)).status,200);
+  const inventory=new URL(publicURL).pathname+'/api/connections';
+  assert.equal((await app.send(agentHost,inventory,owner)).status,401);
+  assert.deepEqual((await app.send(agentHost,inventory,{authorization:'Bearer '+grant.token})).body,{workspace:'Personal',connections:[]});
   assert.equal((await post('/api/auth/logout',{},{...owner,origin:'https://foreign.example'})).status,403);
   assert.equal((await post('/api/auth/logout',{},owner)).status,200);
   assert.equal((await app.send(ownerHost,'/api/state',owner)).status,401);

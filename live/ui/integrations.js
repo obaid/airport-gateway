@@ -143,7 +143,11 @@
         <button class="button primary" type="button" data-connect-integration ${live?'':'disabled'}>${icon('plus',15)}Connect account</button>
         ${!live?`<p class="int-note">${ctx.state.ready?'Waiting for confirmation from the live catalog.':'Airport’s provider must be configured before connecting an account.'}</p>`:''}</div></section>
         <section class="panel linked-accounts"><div class="panel-head"><h2>Accounts in ${esc(ctx.workspace.name)}</h2></div>
-        ${linked.map(c=>`<a class="linked-account" href="#connections/${encodeURIComponent(c.id)}/settings"><span>${esc(c.label||a.name)}</span><span class="int-status">${c.status==='active'?'Connected':c.status==='pending'?'Awaiting sign-in':'Address mismatch'}</span>${icon('chevron-right',14)}</a>`).join('')||'<p class="empty">No accounts connected.</p>'}</section></div>`;
+        ${linked.map(c=>{
+          const needsAccess=c.id!=='pilot-gmail'&&!c.accessMode&&!(c.tools||[]).some(t=>t.allowed||t.enabled);
+          const status=c.status==='active'?(needsAccess?'Connected · Set up access':'Connected'):c.status==='pending'?'Awaiting sign-in':'Address mismatch';
+          return `<a class="linked-account" href="#connections/${encodeURIComponent(c.id)}/settings"><span>${esc(c.label||a.name)}</span><span class="int-status">${status}</span>${icon('chevron-right',14)}</a>`;
+        }).join('')||'<p class="empty">No accounts connected.</p>'}</section></div>`;
       el.onclick=e=>{if(live&&current()&&e.target.closest('[data-connect-integration]'))ctx.connectToolkit(a);};
     }
     if(known)paint(known,false);

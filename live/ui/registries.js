@@ -35,10 +35,11 @@
       list.unshift({id:'pilot-gmail',toolkit:'gmail',label:w.email||w.expectedEmail||'Gmail inbox',status:w.status,pilot:true});
     function row(c) {
       const allowed=c.pilot?(w.policy==='Allow'?1:0):(c.tools||[]).filter(t=>t.allowed||t.enabled).length;
-      const total=c.pilot?1:c.toolsCount;
       const count=logs.filter(log=>c.pilot?['gmail_inbox_counts','gmail_send_email'].includes(log.tool):log.exchange?.request?.connection?.id===c.id).length;
       const state={active:'Connected',pending:'Awaiting sign-in',disabled:'Disconnected',mismatch:'Address mismatch'}[c.status]||'Unverified';
-      const meta=c.status==='active' ? `<strong>${allowed}${Number.isFinite(total)?' of '+total:''}</strong><small>tools allowed</small>` : `<strong>${esc(state)}</strong><small>Account status</small>`;
+      const needsAccess=c.status==='active'&&!c.pilot&&!allowed&&!c.accessMode;
+      const mode={'read-only':'Read only','write-only':'Write only','read-write':'Read and write',custom:'Custom'}[c.accessMode];
+      const meta=c.status==='active' ? `<strong${needsAccess?' class="rg-setup"':''}>${needsAccess?'Set up agent access':mode||'Connected'}</strong><small>${needsAccess?'Connected · 0 tools':allowed+' tool'+(allowed===1?'':'s')+' allowed'}</small>` : `<strong>${esc(state)}</strong><small>Account status</small>`;
       const label=c.label||toolkitName(c.toolkit), path='#connections/'+enc(c.id)+'/settings';
       return `<a class="entity-row rg-entity rg-account" href="${path}">${mark(ctx,c.toolkit)}<span class="entity-id rg-id"><strong>${esc(toolkitName(c.toolkit))}</strong><small>${esc(label)}</small></span>
         <span class="entity-meta rg-meta">${meta}</span><span class="entity-meta rg-meta" title="Requests in this workspace’s retained activity"><strong>${count}</strong><small>logged request${count===1?'':'s'}</small></span>${icon('chevron-right',16)}</a>`;

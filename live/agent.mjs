@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { catalogToolRestriction } from './store.mjs';
+import { matchesAccessMode } from './access-presets.mjs';
 import { ComposioError } from './composio.mjs';
 
 const MODERN = '2026-07-28';
@@ -10,6 +11,8 @@ const SERVER = { name: 'airport', title: 'Airport', version: '1.0.0' };
 const READ = 'gmail_inbox_counts';
 const SEND = 'gmail_send_email';
 const COUNT_PATH = '/api/gmail/inbox-counts';
+const CONNECTIONS_PATH = '/api/connections';
+const CONNECTIONS = 'airport_list_connections';
 const MAX_BYTES = 16 * 1024;
 
 const COUNT_TOOL = {
@@ -18,6 +21,14 @@ const COUNT_TOOL = {
   description: 'Return the total and unread message counts for the connected Gmail inbox.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+};
+
+const CONNECTIONS_TOOL = {
+  name: CONNECTIONS,
+  title: 'List workspace connections',
+  description: 'List connected apps in this Airport workspace and the number of tools available in each. Includes connections with zero allowed tools. Use tools/list for the individual operations.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 };
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -69,7 +80,7 @@ function instructions(origin) {
     '',
     'In Airport, select the workspace, open Agents and choose Add agent. Choose an access duration, then choose Create setup prompt. Give the one-use prompt to the agent that will receive access.',
     '',
-    'For a workspace agent, use '+origin+'/mcp with Streamable HTTP. Store the token issued for that agent as a bearer credential. Use tools/list to discover the individual tools the workspace owner has enabled. Re-list when permissions change.',
+    'For a workspace agent, use '+origin+'/mcp with Streamable HTTP. Store the token issued for that agent as a bearer credential. Call airport_list_connections to see the connected apps and allowed tool counts, or GET '+origin+CONNECTIONS_PATH+' with the same named agent bearer. Use tools/list for individual operations. Re-list when permissions change.',
     '',
     'If you received a one-use agent invitation, POST '+origin+'/agents/register with application/json and {"invitation":"<invitation>","name":"<your agent name>"}. Omit name if the owner chose it. Claim within ten minutes. A name already in use returns 409. Store the returned token as a bearer credential in private connector storage, then connect to '+origin+'/mcp. Keep invitation and token out of URLs and logs.',
     '',
@@ -196,7 +207,7 @@ async function runCatalogTool(store,getCatalog,grant,tool,transport,args) {
     const response=await provider.execute({owner:policy.owner,accountId:policy.account,toolkit:policy.toolkit,
       slug:policy.slug,version:policy.version,args,beforeDispatch:metadata=>{
         if (!current() || metadata?.slug!==policy.slug || metadata?.version!==policy.version ||
-          metadata?.toolkit!==policy.toolkit || catalogToolRestriction(metadata) ||
+          metadata?.toolkit!==policy.toolkit || catalogToolRestriction(metadata) || !matchesAccessMode(policy.presetClass,metadata) ||
           !isDeepStrictEqual(metadata.inputSchema,policy.inputSchema)) throw new ChangedApproval();
         dispatched=true;
       }});
@@ -217,6 +228,7 @@ function safeRunResult(tool, result) {
   if (tool === SEND || result?.outcome === 'Blocked') {
     return { status: 403, data: { error: 'Airport policy blocked this tool.' } };
   }
+  if (tool === CONNECTIONS) return { status: 200, data: result.data };
   if (catalogName(tool)) {
     return result?.outcome==='Allowed' && Object.hasOwn(result,'data')
       ? {status:200,data:{data:result.data}} : {status:502,data:{error:'The provider could not complete the approved operation.'}};
@@ -229,8 +241,36 @@ function safeRunResult(tool, result) {
   return { status: 502, data: { error: 'Inbox counts are unavailable. Check the connection in Airport.' } };
 }
 
+const pilotConnected = pilot => pilot.status === 'active' && Boolean(pilot.account && pilot.email);
+const approvedCatalogTools = (store, workspace) => store.approvedTools(workspace).filter(tool => !catalogToolRestriction(tool));
+
+function listAgentConnections(store, grant, transport) {
+  const { workspace, actor, clientType } = grant;
+  let result;
+  if (store.canUseCatalog(grant)) {
+    const pilot = store.get(workspace);
+    const counts = new Map();
+    for (const tool of approvedCatalogTools(store, workspace)) {
+      counts.set(tool.connection, (counts.get(tool.connection) || 0) + 1);
+    }
+    const connections = store.listConnections(workspace)
+      .filter(c => c.status === 'active')
+      .map(c => ({ label: c.label, toolkit: c.toolkit, allowedToolCount: counts.get(c.id) || 0 }));
+    if (pilotConnected(pilot)) {
+      connections.unshift({ label: 'Gmail inbox', toolkit: 'gmail', allowedToolCount: pilot.policy === 'Allow' ? 1 : 0 });
+    }
+    result = { outcome: 'Allowed', data: {workspace: pilot.name, connections}, detail: 'Listed connected apps and their allowed tool counts.' };
+  } else {
+    result = { outcome: 'Blocked', detail: 'Connection discovery requires a named workspace agent.' };
+  }
+  store.log(workspace, actor, CONNECTIONS, result.outcome, false, result.detail,
+    {channel: transport.channel, request: transport.request, response: transport.render(result)}, clientType);
+  return result;
+}
+
 export function createToolRunner({store,getProvider,getCatalog=getProvider}) {
   return async function run(grant,tool,transport,args=transport?.arguments??{}) {
+    if (tool === CONNECTIONS && transport) return listAgentConnections(store, grant, transport);
     if (catalogName(tool)) return runCatalogTool(store,getCatalog,grant,tool,transport,args);
     const {workspace:ws,actor} = grant;
     const row = store.get(ws);
@@ -328,17 +368,18 @@ async function mcp(req, res, store, run, grant) {
   if (method === 'tools/list' && only(params, ['_meta', 'cursor'])) {
     if (params.cursor !== undefined) return invalid();
     const pilot=store.get(grant.workspace);
-    const allowed=pilot.status==='active' && pilot.account && pilot.email && (await store.getPolicy(grant.workspace))==='Allow';
-    const approved=store.canUseCatalog(grant)?store.approvedTools(grant.workspace):[];
-    const dynamic=approved.filter(t=>!catalogToolRestriction(t)).map(t=>({
+    const allowed=pilotConnected(pilot) && (await store.getPolicy(grant.workspace))==='Allow';
+    const named=store.canUseCatalog(grant);
+    const approved=named?approvedCatalogTools(store,grant.workspace):[];
+    const dynamic=approved.map(t=>({
       name:t.mcpName,title:t.label+' · '+t.name,description:t.description,inputSchema:t.inputSchema
     }));
-    return success({ tools: [...(allowed?[COUNT_TOOL]:[]),...dynamic] });
+    return success({ tools: [...(allowed?[COUNT_TOOL]:[]),...dynamic,...(named?[CONNECTIONS_TOOL]:[])] });
   }
   if (method !== 'tools/call') return rpcError(res, id, modern ? 404 : 200, -32601, 'Method not found');
   if (!only(params, ['name', 'arguments', '_meta'])) return invalid();
   const generic=catalogName(params.name);
-  if (!generic && ![READ,SEND].includes(params.name)) return invalid();
+  if (!generic && ![READ,SEND,CONNECTIONS].includes(params.name)) return invalid();
   const args = Object.hasOwn(params, 'arguments') ? params.arguments : {};
   if (generic ? !object(args) : !only(args, params.name===SEND?['to','subject','body']:[])) return invalid();
   const safeArgs = generic ? {} : Object.fromEntries(Object.keys(args).map(key=>[key,'[redacted]']));
@@ -367,10 +408,10 @@ export function makeAgentHandler({ store, run, publicURL }) {
         throw new InputError(403, 'Origin is not allowed.');
       }
       const path = req.url;
-      if (!['/airport/connect', '/pair/start', '/pair/token', '/agents/register', '/mcp', COUNT_PATH].includes(path)) {
+      if (!['/airport/connect', '/pair/start', '/pair/token', '/agents/register', '/mcp', COUNT_PATH, CONNECTIONS_PATH].includes(path)) {
         throw new InputError(404, 'Route not found.');
       }
-      const method = [COUNT_PATH, '/airport/connect'].includes(path) ? 'GET' : 'POST';
+      const method = [COUNT_PATH, CONNECTIONS_PATH, '/airport/connect'].includes(path) ? 'GET' : 'POST';
       if (req.method !== method) {
         res.setHeader('allow', method);
         throw new InputError(405, 'Method is not supported.');
@@ -399,8 +440,9 @@ export function makeAgentHandler({ store, run, publicURL }) {
         throw new InputError(401, 'A valid Airport bearer token is required.');
       }
       if (path === '/mcp') return await mcp(req, res, store, run, grant);
-      const { status, data } = safeRunResult(READ, await run(grant, READ,{
-        channel:'http',request:{method:'GET',path:COUNT_PATH,params:{}},render:result => safeRunResult(READ,result).data
+      const tool = path === CONNECTIONS_PATH ? CONNECTIONS : READ;
+      const { status, data } = safeRunResult(tool, await run(grant, tool,{
+        channel:'http',request:{method:'GET',path,params:{}},render:result => safeRunResult(tool,result).data
       }));
       reply(res, status, data);
     } catch (error) {

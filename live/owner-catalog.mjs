@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {classifyTool,createAccessActions} from './access-presets.mjs';
 import {catalogToolRestriction,fail} from './store.mjs';
 
 // This published directory lets owners explore before adding a Composio project key.
@@ -37,7 +38,8 @@ export function createCatalogActions({store,getCatalog,callbackURL}) {
     const enabled=new Map(store.listToolPolicies(b.workspace,connection.id).map(t=>[t.slug,t]));
     return {...result,items:result.items.filter(t=>t.toolkit===connection.toolkit).map(t=>{
       const pinned=enabled.get(t.slug);
-      return {...t,allowed:pinned?.version===t.version && Boolean(pinned?.allowed || pinned?.enabled),approvedVersion:pinned?.version,unsupportedReason:catalogToolRestriction(t)};
+      return {...t,allowed:pinned?.version===t.version && Boolean(pinned?.allowed || pinned?.enabled),approvedVersion:pinned?.version,
+        presetClass:classifyTool(t),unsupportedReason:catalogToolRestriction(t)};
     })};
   }
   async function add(b) {
@@ -86,10 +88,11 @@ export function createCatalogActions({store,getCatalog,callbackURL}) {
     if(b.version && b.version!==tool.version)fail('The tool changed. Refresh its permissions before allowing it.',409);
     const restriction=catalogToolRestriction(tool);
     if(restriction)fail(restriction,403);
-    store.setToolPolicy(b.workspace,c.id,tool,true);
+    store.setToolPolicy(b.workspace,c.id,tool,true,c.accessRevision);
     return {ok:true};
   }
   return new Map(Object.entries({
+    ...createAccessActions(store,provider),
     'workspace-create':b=>({workspace:store.createWorkspace(b.name)}),
     catalog:async b=>{ws(b); const page=paging(b);const p=getCatalog();return p?{...await p.listToolkits(page),source:'live'}:browseDirectory(page);},
     'connection-add':add,'connection-check':check,'connection-tools':listTools,'tool-access':access,
