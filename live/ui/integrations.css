@@ -1,0 +1,19 @@
+.int-browser,.int-detail { display:grid; min-width:0; gap:18px }
+.int-browser .popular-section { margin:0 0 8px }
+.int-browser .dir-card { color:var(--ink) }
+.int-browser .dir-card>span:nth-child(2) { min-width:0 }
+.int-browser .int-results { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,215px),1fr)); gap:10px }
+.int-browser .dir-controls label { display:grid }
+.int-browser .int-pager { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-top:18px; padding-top:14px; border-top:1px solid var(--line) }
+.int-browser .int-pager:empty { display:none }
+.int-browser .int-pager>div { display:flex; align-items:center; gap:8px }
+.int-detail .linked-account .int-status { margin-left:auto; color:var(--muted); font-size:12px }
+.int-detail .linked-account { justify-content:flex-start }
+.int-detail .int-reference { font-size:12px;color:var(--muted) }
+.int-detail .panel-inner>.button { margin-top:14px }
+.int-note { margin:0 0 12px; font-size:13px; color:var(--muted) }
+.int-note button { font:inherit; color:var(--accent); text-decoration:underline; text-underline-offset:3px }
+.int-detail .int-note { margin:8px 0 0 }
+.int-browser .int-directory { display:block }
+.int-browser .dir-controls input,.int-browser .dir-controls select { font-weight:400; font-size:14px }
+.int-browser .dir-controls select { appearance:auto; padding-right:8px }

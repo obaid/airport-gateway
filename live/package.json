@@ -1,0 +1,13 @@
+{
+  "name": "airport-gateway",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.16.0" },
+  "scripts": {
+    "start": "node hosted.mjs",
+    "test": "node --test *.test.mjs"
+  },
+  "dependencies": {
+    "jose": "6.2.18"
+  }
+}

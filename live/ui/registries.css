@@ -1,0 +1,19 @@
+.rg-page { display:grid; gap:16px; min-width:0 }
+.rg-page .rg-panel { border-radius:9px }
+.rg-page .rg-heading { padding:15px 19px }
+.rg-entity,.rg-request { width:100%; text-align:left }
+.rg-entity .rg-mark.native { background:#f3f4ef }
+.rg-mark img { object-fit:contain }
+.rg-chip { justify-self:start }
+.rg-page .rg-heading>span,.rg-filters label>span,.rg-endpoint>span { font-size:13px }
+.rg-filters { margin:0 }
+.rg-filters label,.rg-endpoint { display:grid; gap:6px; min-width:0 }
+.rg-request time { font-size:13px; color:var(--muted) }
+.rg-endpoint { margin-top:14px }
+.rg-body p,.rg-legacy { color:var(--muted); font-size:14px }
+.rg-body>.button { margin-top:14px }
+.rg-archive { border-top:1px solid var(--line) }
+.rg-archive>summary { padding:12px 19px; color:var(--muted) }
+.rg-page .audit-payloads { overflow:hidden }
+.rg-page .audit-op { min-width:0 }
+@media(max-width:600px){.rg-request time { display:none }.rg-page .rg-heading { padding:12px }.rg-filters { grid-template-columns:1fr 1fr }}

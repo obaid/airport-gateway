@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark"><meta name="theme-color" content="#141615">
+  <title>Airport · Owner console</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/assets/icons.js"></script><script defer src="/app.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+  <aside id="sidebar" aria-label="Workspace navigation">
+    <div class="brand-row"><a class="brand" href="#overview" data-route="#overview" aria-label="Airport overview"><span data-brand></span><span>Airport</span></a><button class="mobile-x icon-btn" data-shell="dismiss" aria-label="Close navigation"><span data-icon="x"></span></button></div>
+    <div class="ws-wrap">
+      <button type="button" class="ws-button" id="ws-button" data-shell="workspace" aria-controls="workspace-menu" aria-expanded="false"><span class="workspace-icon" id="workspace-mark"></span><span class="workspace-label"><small>Workspace</small><strong id="workspace-name">Loading…</strong></span><span data-icon="chevrons"></span></button>
+      <select id="workspace" aria-label="Active workspace" hidden disabled><option>Loading…</option></select>
+      <div class="workspace-menu" id="workspace-menu" hidden></div>
+    </div>
+    <nav class="nav-sections" aria-label="Workspace pages">
+      <div class="nav-label">Workspace</div>
+      <a class="nav-item" href="#overview" data-nav="overview"><span data-icon="overview"></span><span>Overview</span></a>
+      <a class="nav-item" href="#connections" data-nav="connections"><span data-icon="connections"></span><span>Connections</span></a>
+      <a class="nav-item" href="#integrations" data-nav="integrations"><span data-icon="layers"></span><span>Integrations</span></a>
+      <a class="nav-item" href="#agents" data-nav="agents"><span data-icon="agents"></span><span>Agents</span></a>
+      <div class="nav-label second">Access control</div>
+      <a class="nav-item" href="#policies" data-nav="policies"><span data-icon="shield"></span><span>Policies</span></a>
+      <a class="nav-item" href="#activity" data-nav="activity"><span data-icon="activity"></span><span>Activity</span></a>
+    </nav>
+    <div class="sidebar-foot"><div class="owner-avatar"><span data-icon="personal"></span></div><div><strong>Workspace owner</strong><small id="console-foot">Owner console</small></div></div>
+  </aside>
+  <div class="scrim" data-shell="dismiss" aria-hidden="true"></div>
+  <div class="stage">
+    <header class="bar" id="bar">
+      <div class="crumb"><button class="mobile-trigger icon-btn" data-shell="mobile" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><span data-icon="menu"></span></button><span data-icon="layers"></span><button type="button" data-shell="crumb" id="crumb" title="Switch workspace">Workspace</button><b>/</b><span id="crumb-section">Overview</span></div>
+      <div class="mode-access"><span class="preview-info"><i class="preview-light"></i>Live gateway</span><span class="scope-label" id="console-scope">Owner console</span></div>
+    </header>
+    <main id="main" tabindex="-1">
+      <div class="page-head"><div><h1 class="page-title" id="page-title" tabindex="-1">Workspace overview</h1><p class="subtitle" id="subtitle">Connecting to the owner console…</p></div><div class="actions" id="page-actions"></div></div>
+      <div role="status" id="message" hidden></div><div id="network" role="alert" hidden></div>
+      <div id="page-content">
+        <div id="workspace-summary" hidden></div>
+        <section id="gate-map" class="map-panel panel" aria-label="Workspace gateway map" hidden></section>
+        <div id="overview-feed" hidden></div>
+        <section id="connections" class="panel" tabindex="-1" hidden></section>
+        <section id="agents" class="panel" tabindex="-1" hidden></section>
+        <div id="module-page" hidden></div>
+        <section class="panel" id="mail" hidden tabindex="-1"></section>
+        <section class="panel" id="muse" hidden tabindex="-1" aria-label="Muse access"></section>
+        <section class="panel" id="permissions" tabindex="-1" hidden></section>
+        <section class="panel" id="audit" tabindex="-1" hidden></section>
+      </div>
+    </main>
+  </div>
+</div>
+<dialog id="dialog" aria-labelledby="dialog-title"><div class="dialog-top"><h2 id="dialog-title"></h2><button type="button" aria-label="Close dialog" data-close>×</button></div><div id="dialog-content"></div></dialog>
+</body>
+</html>
