@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 620" fill="none">
+  <g opacity=".31" stroke="#9fc395" stroke-width="1.1">
+    <path d="m3 212 61-24 18-31 29 5 44-30 28 12 33-18 47 16 47-31 53 15 32-20 38 4 20-18 39-8 51-42 55-11"/>
+    <path d="m9 231 62-27 19-28 27 6 42-32 24 12 33-17 53 17 45-32 52 15 33-19 37 4 24-20 39-9 51-41 56-11"/>
+    <path d="m27 466 77-15 32 13 55-29 44 5 39-18 27 4 62-30 48 10 23-20 44 4 35-25 39 7 48-30"/>
+    <path d="m212 380 71-66 4 5-70 66z m25 8 68-61 3 3-69 63z m-27-75 83 42-2 5-84-43z"/>
+  </g>
+  <g stroke="#c2dfa5" opacity=".45">
+    <circle cx="310" cy="310" r="246"/>
+    <circle cx="310" cy="310" r="251" stroke-width="5" pathLength="72" stroke-dasharray=".073 .927"/>
+    <circle cx="310" cy="310" r="252" stroke-width="10" pathLength="12" stroke-dasharray=".013 .987"/>
+    <path d="M310 40v540M40 310h540" stroke-dasharray="2 6"/>
+    <path d="m136 136 348 348m0-348L136 484" stroke-dasharray="2 7" opacity=".46"/>
+  </g>
+  <g fill="#cedeae" font-family="ui-monospace,Menlo,monospace" font-size="11" text-anchor="middle">
+    <text x="310" y="38">N</text><text x="586" y="314">E</text>
+    <text x="310" y="589">S</text><text x="35" y="314">W</text>
+  </g>
+  <g stroke="#cee9a4" stroke-width="1.4" stroke-dasharray="2 6" stroke-linecap="round">
+    <path d="M164 213q55 28 126 88"/>
+    <path d="M333 297q56-46 105-61M332 324q42 24 65 60"/>
+  </g>
+  <g font-family="ui-monospace,Menlo,monospace" font-size="12" font-weight="600">
+    <g transform="translate(159 209)">
+      <circle r="10" stroke="#deefa9" opacity=".45"/><circle r="4" fill="#deefa9"/>
+      <path d="M8-8 20-20h10" stroke="#bdd58c"/>
+      <rect x="30" y="-34" width="64" height="27" rx="4" fill="#17342a" stroke="#98ae82"/>
+      <text x="62" y="-16" text-anchor="middle" fill="#eef1d2">Agent</text>
+    </g>
+    <g transform="translate(440 235)">
+      <circle r="10" stroke="#f2d58f" opacity=".46"/><circle r="4" fill="#f2d58f"/>
+      <path d="M7-7 17-17h9" stroke="#bda97c"/>
+      <rect x="26" y="-31" width="58" height="27" rx="4" fill="#19372d" stroke="#aeb08a"/>
+      <text x="55" y="-13" text-anchor="middle" fill="#f7edc9">Email</text>
+    </g>
+    <g transform="translate(399 387)">
+      <circle r="10" stroke="#b9dcc1" opacity=".46"/><circle r="4" fill="#b9dcc1"/>
+      <path d="m8 7 12 10h11" stroke="#95b79c"/>
+      <rect x="31" y="4" width="84" height="27" rx="4" fill="#19372d" stroke="#92ae96"/>
+      <text x="73" y="22" text-anchor="middle" fill="#deeddb">Calendar</text>
+    </g>
+  </g>
+  <g transform="translate(310 310)">
+    <circle r="32" fill="#10271f" fill-opacity=".84" stroke="#a7cb8a" stroke-opacity=".48"/>
+    <circle r="26" fill="#234b36" stroke="#c6e6a4"/>
+    <g transform="translate(-16 -16) scale(.667)">
+      <rect width="48" height="48" rx="9" fill="#deff67"/><path fill="#18201c" d="m7 32 18-18h7L14 32zM17 32l18-18h6L23 32zM28 32l10-10v10z"/>
+    </g>
+    <text y="53" font-family="ui-monospace,Menlo,monospace" font-weight="600" font-size="13" fill="#e5f3cb" text-anchor="middle">Airport</text>
+  </g>
+</svg>

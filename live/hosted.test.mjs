@@ -254,7 +254,7 @@ test('the verifier confirms the Gmail profile and refuses ambiguous attempts bef
   assert.equal((await app.owner(b)).body.workspaces.find(w=>w.id==='work').status,'active');
 });
 
-test('only the static welcome page is public on the owner hostname and login returns to the protected portal',async t=>{
+test('only the welcome page and branding assets are public in Access mode on the owner hostname and login returns to the protected portal',async t=>{
   const dir=mkdtempSync(join(tmpdir(),'airport-public-page-'));
   const app=await listen(readHostedConfig(env(dir)));
   t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
@@ -270,7 +270,19 @@ test('only the static welcome page is public on the owner hostname and login ret
   const head=await app.send(ownerHost,'/welcome',{},undefined,'HEAD');
   assert.equal(head.status,200);
   assert.equal(head.body,'');
-  for(const path of ['/','/login','/welcome/','/api/account','/app.js','/api/state','/welcome?redirect=https://other.example']) {
+  for (const name of ['bricolage-latin','public-sans-regular','public-sans-semibold']) {
+    const fontPath='/assets/'+name+'.woff2';
+    const font=await app.send(ownerHost,fontPath);
+    assert.equal(font.status,200);
+    assert.equal(font.headers['content-type'],'font/woff2');
+    assert.equal(font.body.slice(0,4),'wOF2');
+    assert.equal((await app.send(agentHost,fontPath)).status,404);
+  }
+  const illustration=await app.send(ownerHost,'/assets/access-airfield.svg',{},undefined,'HEAD');
+  assert.equal(illustration.status,200);
+  assert.equal(illustration.headers['content-type'],'image/svg+xml');
+  assert.equal(illustration.body,'');
+  for(const path of ['/','/login','/welcome/','/api/account','/app.js','/style.css','/assets/icons.js','/api/state','/welcome?redirect=https://other.example']) {
     assert.equal((await app.send(ownerHost,path)).status,401);
   }
   assert.equal((await app.send(agentHost,'/welcome')).status,404);

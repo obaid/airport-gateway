@@ -109,8 +109,8 @@
   }
 
   function brand(size = 32) {
-    const shape = '<rect width="32" height="32" rx="8" fill="#deff67"/><g fill="#152032"><path d="M4.2 23.2 14 8.3l3.6-1.6L8.3 23.2z"/><path d="m10.1 23.2 9.2-16.5 3.6-1.6-8.8 18.1z"/><path d="m16.2 23.2 5.2-10.7 5 10.7h-4.3l-1.2-2.9-1.4 2.9z"/></g>';
-    return svg(shape, size, 32, 'brand');
+    const shape = '<rect width="48" height="48" rx="9" fill="#deff67"/><g fill="#18201c"><path d="m7 32 18-18h7L14 32zM17 32l18-18h6L23 32zM28 32l10-10v10z"/></g>';
+    return svg(shape, size, 48, 'brand');
   }
 
   window.Art = { icon, logo, brand };

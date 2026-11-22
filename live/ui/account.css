@@ -25,17 +25,7 @@
 .account-popover a {display:flex; align-items:center; gap:9px; color:var(--ink);padding:9px 8px; border-radius:5px; text-decoration:none;font-size:14px}
 .account-popover a:hover,.account-popover a:focus-visible {background:var(--soft)}
 .acct-onboarding > .shell,.acct-onboarding > .skip {display:none}
-.account-access {min-height:100svh;background:var(--base,#141615);color:var(--ink)}
-.acct-entry-header {padding:23px clamp(20px,5vw,80px);border-bottom:1px solid var(--line)}
-.acct-brand {display:inline-flex;align-items:center;gap:10px;font-size:23px;font-weight:600;letter-spacing:-.055em}
-.acct-entry-panel {
-  width:min(calc(100% - 32px),430px);margin:clamp(32px,8vh,92px) auto 48px;
-  padding:clamp(22px,4vw,32px);background:var(--card);border:1px solid var(--line);border-radius:12px;
-}
-.acct-entry-mark {display:grid;place-items:center;width:40px;height:40px;margin-bottom:22px;border-radius:9px;background:#30372a;color:var(--lime)}
-.acct-entry-panel h1 {font-size:clamp(29px,4.2vw,38px);line-height:1.08;letter-spacing:-.055em;margin:0 0 10px;font-weight:600}
-.acct-entry-panel h1:focus {outline:none}
-.acct-entry-description,.acct-block-head p {color:var(--dim);line-height:1.55;font-size:14px}
+.acct-block-head p {color:var(--dim);line-height:1.55;font-size:14px}
 .acct-identity {display:flex;align-items:center;gap:7px;color:#ced7c4;font-size:13px;line-height:1.5;overflow-wrap:anywhere;margin:17px 0 0}
 .acct-icon {display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
 .acct-join-form {display:grid;gap:14px;margin-top:24px}
@@ -77,8 +67,6 @@ body[data-page="account"] #module-page {display:grid;gap:18px;max-width:800px}
 .acct-state[data-state="pending"] {color:#ead197}.acct-state[data-state="accepted"] {color:#c5dea2}
 .acct-revoke-confirm {display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12px}
 @media(max-width:480px) {
-  .acct-entry-header {padding:16px 20px}
-  .acct-entry-panel {margin-top:35px}
   .acct-details > div {grid-template-columns:1fr;gap:5px}
   .acct-invite-info {flex-basis:100%}
 }

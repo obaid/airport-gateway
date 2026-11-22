@@ -1,0 +1,130 @@
+@font-face {
+  font-family: Public Sans;
+  src: url("/assets/public-sans-regular.woff2") format("woff2");
+  font-weight: 400; font-display: swap;
+}
+@font-face {
+  font-family: Public Sans;
+  src: url("/assets/public-sans-semibold.woff2") format("woff2");
+  font-weight: 600 800; font-display: swap;
+}
+@font-face {
+  font-family: Bricolage;
+  src: url("/assets/bricolage-latin.woff2") format("woff2");
+  font-weight: 200 800; font-display: swap;
+}
+.access-shell {
+  --access-paper: #f7f4e9;
+  --access-ink: #142e26;
+  --access-muted: #47584d;
+  --access-line: #cbcfc1;
+  --access-display: "Bricolage", "Arial Black", sans-serif;
+  box-sizing: border-box; margin: 0; min-height: 100svh;
+  display: flex; flex-flow: column;
+  color-scheme: light; color: var(--access-ink); background: var(--access-paper);
+  font: 400 1rem/1.5 "Public Sans", system-ui, sans-serif;
+}
+.account-access.access-shell {width:100%;max-width:none;padding:0;margin:0}
+.access-shell *, .access-shell *::before, .access-shell *::after { box-sizing: border-box }
+.access-shell [hidden], .access-shell[hidden] { display: none !important }
+.access-shell .access-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  min-height: 4.6rem; padding: .8rem max(5.2vw,calc((100% - 85rem) / 2));
+  border-bottom: 1px solid #bfc4b5; background: var(--access-paper);
+}
+.access-shell .access-brand {
+  display: inline-flex; align-items: center; gap: .56rem;
+  font: 780 1.72rem/1 var(--access-display); letter-spacing: -.065em;
+  color: var(--access-ink); text-decoration: none;
+}
+.access-shell .access-brand svg { width: 37px; height: 37px }
+.access-shell .access-home,.access-shell .access-link {
+  color: var(--access-ink); text-decoration: underline; text-underline-offset: .24em;
+  font: 600 .875rem/1.5 "Public Sans",system-ui,sans-serif;
+}
+.access-shell .access-home { text-decoration: none; display:flex;align-items:center;gap:.5rem;min-height:42px }
+.access-shell .access-home:hover,.access-shell .access-link:hover { text-decoration: underline }
+.access-shell .access-world {
+  --scope-x: 73%; --scope-y: 49%;
+  --scope-size: min(47vw,44rem);
+  position: relative; isolation: isolate; overflow: hidden; flex: 1;
+  display: grid; align-items: center;
+  padding: clamp(3rem,8vh,6rem) max(8vw,calc((100% - 78rem) / 2));
+  background:
+    repeating-radial-gradient(circle at var(--scope-x) var(--scope-y),transparent 0 calc(var(--scope-size) * .1 - 1px),#a9da9b29 calc(var(--scope-size) * .1 - 1px) calc(var(--scope-size) * .1)),
+    linear-gradient(#a7d4a10b 1px,transparent 1px) center/36px 36px,
+    linear-gradient(90deg,#a7d4a10b 1px,transparent 1px) center/36px 36px,
+    conic-gradient(at var(--scope-x) var(--scope-y),transparent 12deg,#a8e78312 44deg,#b5ea9459 60deg,transparent 60.3deg),
+    radial-gradient(ellipse at var(--scope-x) var(--scope-y),#224a37,#112c23 65%,#0c211c);
+}
+.access-radar {
+  position: absolute; z-index: -1; pointer-events: none; left: var(--scope-x); top: var(--scope-y);
+  transform: translate(-50%,-50%); width: var(--scope-size); height: auto;
+}
+.access-shell .access-pass {
+  position: relative; width: min(100%,28.5rem); min-width: 0; margin: 0; padding: clamp(1.65rem,3vw,2.75rem);
+  background: var(--access-paper); color: var(--access-ink); border: 1px solid #e5e6d4;
+  border-radius: 12px; box-shadow: 4px 6px 0 #071c1680,0 15px 48px #081c1933;
+}
+.access-shell .access-pass h1 {
+  margin: 0; max-width: 100%; color: var(--access-ink); text-wrap: balance;
+  font: 760 clamp(2.45rem,4vw,3.55rem)/.99 var(--access-display); letter-spacing: -.056em;
+}
+.access-shell .access-pass h1:focus { outline: none }
+.access-shell .access-intro { margin: 1rem 0 0; color: var(--access-muted); font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere }
+.access-shell .access-form,.access-shell .access-continue {
+  padding-top: 1.4rem; margin: 1.45rem 0 0; border-top: 1px dashed #a7b09d;
+}
+.access-shell :is(.access-field,.acct-field) {
+  display:grid; gap:.42rem; color:var(--access-ink); font:600 .9rem/1.4 "Public Sans",system-ui,sans-serif;
+}
+.access-shell :is(.access-field,.acct-field) input {
+  min-width:0; width:100%; min-height:48px; padding:.64rem .85rem; border-radius:6px;
+  border:1px solid #7c907c; background:#fffef9; color:var(--access-ink);
+  font:400 1rem/1.4 "Public Sans",system-ui,sans-serif;
+}
+.access-shell input::placeholder {color:#637065;opacity:1}
+.access-shell input[name=code] {font:500 1.3rem/1.2 ui-monospace,monospace;letter-spacing:.18em}
+.access-shell :is(.access-primary,.btn.primary) {
+  display: flex; align-items:center; justify-content:space-between; gap:1rem; width:100%;
+  min-height:48px; margin:.9rem 0 0; padding:.68rem .95rem; cursor:pointer;
+  border:1.5px solid var(--access-ink); border-radius:7px;
+  background:#f3d466; color:var(--access-ink); box-shadow:2px 3px 0 #9faf91;
+  font:650 .96rem/1.35 "Public Sans",system-ui,sans-serif; text-decoration:none;
+}
+.access-shell :is(.access-primary,.btn.primary):hover {background:#ffe189}
+.access-shell :is(.access-primary,.btn.primary):disabled {cursor:wait;opacity:.7}
+.access-shell :is(.access-primary,.btn.primary):active {box-shadow:0 1px 0 #9faf91}
+.access-shell :is(a,button,input):focus-visible {outline:3px solid #355e40; outline-offset:3px}
+.access-alternate {display:flex;justify-content:space-between;align-items:center;gap:.75rem;flex-wrap:wrap;margin-top:.85rem}
+.access-shell button.access-link {border:0;background:transparent;margin:0;padding:.4rem 0;cursor:pointer}
+.access-shell .access-status:not(:empty),.access-shell .acct-feedback:not(:empty) {
+  margin:.95rem 0 0; padding:.5rem .65rem; border-left:3px solid #497551; background:#e6eadb;
+  color:#22412b;font-size:.875rem;line-height:1.45;overflow-wrap:anywhere;
+}
+.access-shell .access-status[data-error],.access-shell .acct-feedback.is-error {border-color:#a24b2d;color:#77331f;background:#f6e7da}
+.access-shell .access-hint,.access-shell noscript {display:block; margin:1.1rem 0 0;color:var(--access-muted);font-size:.875rem;line-height:1.5}
+.access-shell .access-continue .access-primary {margin-top:0}
+.access-shell .acct-identity {color:#34523b; margin:.8rem 0 0;align-items:flex-start}
+.access-shell .acct-identity .acct-icon {margin-top:2px}
+.access-shell .acct-join-form {gap:.95rem}
+.access-shell .acct-join-form .btn.primary {margin:0;justify-content:center}
+.access-shell .acct-entry-foot {margin-top:1.15rem;border-top:0;padding-top:0}
+.access-shell .acct-text-link {color:var(--access-ink)}
+.access-shell .acct-actions .btn {width:auto; min-height:44px; margin:0}
+@media (min-width:1700px) {
+  .access-shell .access-world { --scope-x:calc(50% + 22rem) }
+}
+@media (max-width:800px) {
+  .access-shell .access-world { --scope-x:88%; --scope-size:34rem; padding-inline:5vw }
+}
+@media (max-width:620px) {
+  .access-shell .access-header {min-height:4rem;padding:.65rem 5vw}
+  .access-shell .access-brand {font-size:1.48rem}
+  .access-shell .access-brand svg {width:31px;height:31px}
+  .access-shell .access-home {font-size:.82rem}
+  .access-shell .access-world {--scope-x:50%;--scope-y:calc(100% - var(--scope-size) / 2 - .5rem);--scope-size:min(88vw,21.5rem);align-content:start;justify-items:center;padding:clamp(1.5rem,6vh,3.5rem) 5vw calc(var(--scope-size) + 1rem)}
+  .access-shell .access-radar {opacity:.9}
+  .access-shell .access-pass {padding:clamp(1.35rem,6vw,2rem)}
+  .access-shell .access-pass h1 {font-size:clamp(2.3rem,9vw,3rem)}
+}

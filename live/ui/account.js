@@ -134,14 +134,21 @@
     const root = find('#account-access');
     document.body.classList.add('acct-onboarding');
     root.hidden = false;
-    const top = element('header','acct-entry-header'), brand = element('span','acct-brand','Airport');
-    brand.insertAdjacentHTML('afterbegin',window.Art.brand(33));
-    top.append(brand);
-    const panel = element('section','acct-entry-panel'), icon = element('div','acct-entry-mark');
-    icon.append(symbol(inviteToken ? 'link' : 'personal',23));
-    const h = element('h1','',title); h.id = 'access-title'; h.tabIndex = -1;
-    panel.append(icon,h,element('p','acct-entry-description',description));
-    root.replaceChildren(top,panel);document.title=title+' · Airport';
+    root.classList.add('access-shell');
+    const top=element('header','access-header'),brand=link('Airport','https://airport.so/','access-brand');
+    brand.setAttribute('aria-label','Airport home');
+    brand.insertAdjacentHTML('afterbegin',window.Art.brand(37));
+    const help=link('How Airport works','https://airport.so/#agents','access-home');
+    const arrow=element('span','','↗');arrow.setAttribute('aria-hidden','true');help.append(arrow);
+    top.append(brand,help);
+    const world=element('div','access-world'),panel=element('section','access-pass');
+    const h=element('h1','',title); h.id='access-title'; h.tabIndex=-1;
+    panel.append(h,element('p','access-intro',description));
+    const radar=element('img','access-radar');
+    radar.src='/assets/access-airfield.svg';radar.width=620;radar.height=620;
+    radar.alt='Example route from an agent through Airport to email and calendar.';
+    world.append(panel,radar);
+    root.replaceChildren(top,world);document.title=title+' · Airport';
     h.focus({preventScroll:true});
     return panel;
   }
@@ -178,7 +185,7 @@
     const note = inviteToken ? 'Set up your own Airport account and workspaces.' : open ? 'Choose the name you want to use in Airport.' : 'Airport is invite-only. Open your invitation link or paste it below to create your account.';
     const panel = gate(title,note);
     panel.append(identityBadge(session.identity.email));
-    const form = element('form','acct-join-form'), name = inputField('Display name','displayName');
+    const form = element('form','access-form acct-join-form'), name = inputField('Display name','displayName');
     name.input.required=true;name.input.maxLength=80;name.input.autocomplete='name';
     const invite = inputField('Invitation link','invitation'); invite.input.autocomplete='off'; invite.input.spellcheck=false;
     invite.input.placeholder='Paste your Airport invitation';

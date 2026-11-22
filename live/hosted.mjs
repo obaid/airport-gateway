@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { createRemoteJWKSet, customFetch, jwtVerify } from 'jose';
 import { createComposio } from './composio.mjs';
 import { createCatalog, parseProjectAuthConfigs } from './catalog.mjs';
-import { body as readOwnerBody, createOwnerHandler, serveOwnerAsset } from './owner.mjs';
+import { body as readOwnerBody, createOwnerHandler, serveBrandAsset, serveOwnerAsset } from './owner.mjs';
 import { createToolRunner, makeAgentHandler } from './agent.mjs';
 import { canonicalEmail, createAccounts } from './accounts.mjs';
 import { createCodeSender, createEmailAuth, readEmailConfig, requestAddress } from './email-auth.mjs';
@@ -78,7 +78,11 @@ function errorResponse(res,status,reason,code) {
 
 async function servePublicPage(req,res,page) {
   // Hash only the deployment's static pages. Route names never come from user input.
-  const html=await readFile(new URL('./ui/'+page+'.html',import.meta.url),'utf8');
+  const [template,accessStyle]=await Promise.all([
+    readFile(new URL('./ui/'+page+'.html',import.meta.url),'utf8'),
+    readFile(new URL('./ui/access.css',import.meta.url),'utf8')
+  ]);
+  const html=template.replace('/* airport-access-style */',()=>accessStyle);
   const inlineHashes=tag=>Array.from(html.matchAll(new RegExp('<'+tag+'(?:\\s[^>]*)?>([\\s\\S]*?)</'+tag+'>','gi')),
     match=>"'sha256-"+createHash('sha256').update(match[1]).digest('base64')+"'");
   const csp=["default-src 'none'",'style-src '+inlineHashes('style').join(' '),'script-src '+inlineHashes('script').join(' '),
@@ -276,6 +280,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
         return await entry.agent(req,res);
       }
       if (host !== ownerHost) return errorResponse(res,404);
+      if (await serveBrandAsset(req,res,target)) return;
       if(target==='/welcome' && ['GET','HEAD'].includes(req.method))return await servePublicPage(req,res,'welcome');
       if(emailAuth && target.startsWith('/api/auth/')) return await authAPI(req,res,target);
       const person = await identity(req);

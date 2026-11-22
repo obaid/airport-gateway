@@ -1,0 +1,182 @@
+/* The network is a radar scope. Range markings stay still so individual routes remain easy to trace. */
+#gate-map {
+  --scope-ink: #112c24;
+  --scope-edge: #526d58;
+  --scope-label: #c7dbbe;
+  --scope-bright: #d9f69b;
+  color: #f7f6e7;
+  background: var(--scope-ink);
+  border: 1px solid #345242;
+  border-radius: 14px;
+  overflow: hidden;
+}
+#gate-map .map-heading, #gate-map .trace-bar { background: #112c24; border-color: #47644e }
+#gate-map .map-heading { padding: 14px clamp(14px,2vw,23px) }
+#gate-map .map-heading h2 { color: #f7f6e7; font: 730 1.32rem/1.15 var(--display,Bricolage,Public,sans-serif); letter-spacing: -.04em }
+#gate-map .map-symbol { display: grid; place-items: center; color: var(--scope-bright) }
+#gate-map .map-legend { color: var(--scope-label); font-size: .75rem }
+#gate-map .map-legend span, #gate-map .map-legend span::after { background: var(--scope-bright) }
+#gate-map .diagram {
+  min-height: clamp(245px,23vw,326px);
+  padding: 42px clamp(16px,4vw,72px);
+  background-color: var(--scope-ink);
+  background-image:
+    repeating-radial-gradient(circle at center, transparent 0 46px, #accd9a2a 46px 47px, transparent 47px 48px),
+    linear-gradient(#a9d4a00b 1px, transparent 1px),
+    linear-gradient(90deg, #a9d4a00b 1px, transparent 1px),
+    radial-gradient(ellipse at center, #284b36 0%, #193a2d 47%, #102820 100%);
+  background-size: auto, 29px 29px, 29px 29px, auto;
+  background-position: center;
+}
+#gate-map .diagram::after {
+  background: conic-gradient(from 18deg at center, transparent 1deg, #b4f18d06 32deg, #beff951c 55deg, #cfff9d69 55.2deg, transparent 55.5deg);
+}
+#gate-map .radar-rings { width: 0; height: 0 }
+#gate-map .radar-rings i { display: none }
+#gate-map .radar-rings::before {
+  content: "";
+  position: absolute;
+  width: 189px;
+  height: 189px;
+  transform: translate(-50%,-50%);
+  border: 1px solid #cfedaa47;
+  border-radius: 50%;
+}
+#gate-map .radar-rings::after {
+  content: "";
+  position: absolute;
+  width: 202px;
+  height: 202px;
+  transform: translate(-50%,-50%);
+  border-radius: 50%;
+  background: repeating-conic-gradient(#c7e7af78 0 .7deg, transparent .7deg 6deg);
+  mask-image: radial-gradient(circle closest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+}
+#gate-map .map-group { width: clamp(122px,14vw,198px); max-width: 100%; min-width: 0 }
+#gate-map .map-caption {
+  top: -23px;
+  color: var(--scope-label);
+  font: 600 .665rem/1.4 var(--mono,monospace);
+  text-transform: uppercase;
+  letter-spacing: .085em;
+}
+#gate-map .map-node, #gate-map .map-empty {
+  min-width: 0;
+  min-height: 43px;
+  border-color: #82987e;
+  border-radius: 7px;
+  background: #1c3b2f;
+  color: #f7faeb;
+}
+#gate-map .map-node {
+  padding: 8px 10px;
+  border-left: 3px solid #c2e58b;
+  gap: 8px;
+  box-shadow: 0 2px #091e1780;
+}
+#gate-map .right .map-node { border-left-color: #e5c76d }
+#gate-map .map-node[data-ready="no"] { border-left-color: #a1aaa1 }
+#gate-map .map-node[data-wire-mode="trace-stop"] { border-left-color: #f4ae92 }
+#gate-map .map-node[aria-current], #gate-map .map-node:hover, #gate-map a.gateway-node:hover, #gate-map button.map-empty:hover {
+  background: #2e503b;
+  border-color: #d3efae;
+}
+#gate-map .map-node small { color: var(--scope-label); line-height: 1.25 }
+#gate-map .map-node > svg, #gate-map .map-node > .agent-icon { flex: 0 0 auto }
+#gate-map .map-empty { padding: 8px 11px; line-height: 1.35; color: #dce8d6; background: #183426; font-weight: 500 }
+#gate-map .more-nodes { color: #d7e9c9 }
+#gate-map .gateway-node {
+  min-width: 110px;
+  padding: 11px 14px 14px;
+  gap: 3px;
+  border: 1px solid #a6c88b;
+  border-radius: 12px;
+  color: #f7faeb;
+  background: #183a2b;
+  box-shadow: 0 0 0 4px #102d25, 0 0 0 5px #a7cf8059;
+}
+#gate-map .gateway-node > svg { width: 43px; height: 43px; }
+#gate-map .gateway-node strong { color: #f7faeb; font: 750 1.44rem/1.06 var(--display,Bricolage,Public,sans-serif); letter-spacing: -.055em; margin: 1px 0 0 }
+#gate-map .gateway-node small { color: var(--scope-label); font-size: .67rem }
+#gate-map .route { stroke: #9eba8a; stroke-width: 1.35 }
+#gate-map .route.key-route { stroke: #ccdf9f }
+#gate-map .idle-wire .route { stroke: #a3afa0; stroke-dasharray: 3 4 }
+#gate-map .selected-wire .route, #gate-map .inspect-wire .route { stroke: #ddff9c; stroke-width: 2.1 }
+#gate-map .denied-wire .route { stroke: #f5ae90; stroke-width: 1.8; stroke-dasharray: 4 4 }
+#gate-map .waypoint, #gate-map .port { fill: #d5eda7; stroke: #183427 }
+#gate-map .trace-stop-marker { fill: #f5ae90; stroke: #1a362a }
+#gate-map .trace-bar { min-height: 47px; padding: 9px clamp(14px,2vw,23px); gap: 9px 14px }
+#gate-map .trace-control { min-width: 0; }
+#gate-map .trace-control > span, #gate-map .trace-summary { color: var(--scope-label); font-size: .76rem }
+#gate-map .trace-control select { min-width: 0; color: #f4f6e6; border-color: #718a72; background: #203e30; color-scheme: dark }
+#gate-map .trace-receipt { color: #ecf3df; gap: 6px; flex-wrap: wrap; justify-content: end }
+#gate-map .trace-receipt strong { padding: 3px 7px; color: #143624; background: #d6e8b4; border-radius: 4px; font-size: .7rem; line-height: 1.35 }
+#gate-map .trace-receipt[data-outcome="Blocked"] strong, #gate-map .trace-receipt[data-outcome="Denied"] strong { background: #ffcfb7; color: #61311c }
+#gate-map .trace-receipt:not([data-outcome="Allowed"],[data-outcome="Approved"],[data-outcome="Denied"],[data-outcome="Blocked"]) strong { background: #dce4d6; color: #304336 }
+#gate-map .trace-receipt code { font: 500 .73rem/1.3 var(--mono,monospace) }
+#gate-map :is(a,button,select):focus-visible { outline: 2px solid #ffe18b; outline-offset: 3px }
+
+#workspace-summary .stats {
+  background: #fffdf3;
+  border: 1px solid #c9cebb;
+  border-radius: 12px;
+  margin-bottom: 18px;
+}
+#workspace-summary .stats a { padding: 15px clamp(12px,1.5vw,24px); gap: 6px; }
+#workspace-summary .stats a + a { border-left: 1px solid #d1d5c4 }
+#workspace-summary .stats a::before { display: none }
+#workspace-summary .stats a:hover { background: #edf1d9 }
+#workspace-summary .stats a:focus-visible, #overview-feed .feed-row:focus-visible { outline: 2px solid #355f43; outline-offset: -3px }
+#workspace-summary .stats strong { order: -1; color: #17392b; font: 760 clamp(1.95rem,2.75vw,2.75rem)/1 var(--display,Bricolage,Public,sans-serif); font-variant-numeric: tabular-nums; letter-spacing: -.06em }
+#workspace-summary .stats span { color: #475a49; font-size: .81rem; line-height: 1.35 }
+
+#overview-feed .panel { background: #fffdf3; border: 1px solid #c9cebb; border-radius: 12px }
+#overview-feed .panel-head { border-color: #d5d9ca; background: #faf9ec }
+#overview-feed h2 { color: #1c3b2c; font: 740 1.22rem/1.2 var(--display,Bricolage,Public,sans-serif); letter-spacing: -.045em }
+#overview-feed .text-btn { color: #36573d }
+#overview-feed .text-btn:hover { text-decoration: underline }
+#overview-feed .feed-row { min-width: 0; color: #213a2d; border-color: #e0e3d7 }
+#overview-feed .feed-row:hover { background: #eef3df }
+#overview-feed .feed-id code { color: #50634f; text-overflow: ellipsis; overflow: hidden; white-space: nowrap }
+#overview-feed .route-arrow { color: #60715b }
+#overview-feed .feed-time { white-space: nowrap }
+@media (min-width: 1131px) {
+  #overview-feed .feed-row { grid-template-columns: 26px minmax(0,1fr) auto max-content }
+}
+#overview-feed .sub, #overview-feed .feed-time, #overview-feed .dec-main span, #overview-feed .empty { color: #586852 }
+#overview-feed .state-badge { background: #e7eadf; color: #425240 }
+#overview-feed .state-badge:is(.allowed,.approved) { color: #2e5130; background: #dceac5 }
+#overview-feed .state-badge:is(.blocked,.denied,.failed,.error,.interrupted) { color: #743a27; background: #f6d9ca }
+#overview-feed .state-badge:is(.pending,.running) { color: #614b14; background: #f3e5af }
+#overview-feed .dec-main b { color: #183a2c; font: 750 2.08rem/1 var(--display,Bricolage,Public,sans-serif); letter-spacing: -.05em }
+#overview-feed .dec-row { color: #485d4a }
+#overview-feed .dec-row b { color: #263f2e }
+#overview-feed .decision-bar { background: #e4e7d9 }
+#overview-feed .decision-bar rect.good { fill: #5b8144 }
+#overview-feed .decision-bar rect.stop { fill: #b46247 }
+#overview-feed .decision-bar rect.wait { fill: #bb9441 }
+#overview-feed .dec-row i.good { background: #5b8144!important }
+#overview-feed .dec-row i.stop { background: #b46247!important }
+#overview-feed .dec-row i.wait { background: #bb9441!important }
+#overview-feed .review-pending { color: #614b14; background: #f7edcd; border-color: #d6c385 }
+
+@media (max-width: 600px) {
+  #workspace-summary .stats a { padding: 12px 15px }
+  #workspace-summary .stats a:nth-child(3) { border-left: 0 }
+  #workspace-summary .stats a:nth-child(n+3) { border-top: 1px solid #d1d5c4 }
+  #gate-map .diagram { padding: 34px 10px 27px; min-height: 217px; grid-template-columns: minmax(0,1fr) 65px minmax(0,1fr); gap: 7px }
+  #gate-map .gateway-node { min-width: 57px; padding: 8px 4px; border-radius: 9px }
+  #gate-map .gateway-node strong { font-size: .88rem }
+  #gate-map .gateway-node > svg { width: 28px; height: 28px }
+  #gate-map .map-group { width: calc(100% - 8px); max-width: 128px }
+  #gate-map .map-node { gap: 4px; padding: 7px 4px; min-height: 34px }
+  #gate-map .map-node > .agent-icon { --agent-size: 18px }
+  #gate-map .map-empty { padding: 7px 4px; gap: 4px; min-height: 34px }
+  #gate-map .map-caption { top: -19px; font-size: .6rem }
+  #gate-map .radar-rings::before { width: 102px; height: 102px }
+  #gate-map .radar-rings::after { width: 112px; height: 112px }
+  #gate-map .trace-bar { align-items: stretch }
+  #gate-map .trace-control { display: grid; grid-template-columns: auto minmax(0,1fr) }
+  #gate-map .trace-control select { width: 100%; max-width: none }
+  #gate-map .trace-receipt { justify-content: flex-start; align-self: flex-start }
+}

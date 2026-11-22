@@ -352,10 +352,10 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       return `<div class="map-group ${side}"><div class="map-caption">${left?'Agents':'Connections'}</div><div class="node-stack">${items||empty}</div>${entries.length>4?goLink(left?'#agents':'#connections','+'+(entries.length-4)+' more','more-nodes'):''}</div>`;
     };
     const select=choices.length?`<label class="trace-control"><span>Trace request</span><select id="trace-select"><option value="">All workspace routes</option>${choices.map(([id,at,actor,outcome,tool])=>`<option value="${esc(id)}" ${id===traceId?'selected':''}>${esc([actor,tool,outcome,when(at,true)].filter(Boolean).join(' · '))}</option>`).join('')}</select></label>`:'';
-    const info=trace?goLink(receipt,'<strong>'+esc(trace.outcome)+'</strong><code>'+esc(traceTool(trace))+'</code>'+icon('chevron-right',14),'trace-receipt',`title="${esc(historical.direction)} · ${esc(when(trace.at,true))}" aria-label="${esc('View activity · '+trace.outcome+' · '+historical.direction)}"`):
+    const info=trace?goLink(receipt,'<strong>'+esc(trace.outcome)+'</strong><code>'+esc(traceTool(trace))+'</code>'+icon('chevron-right',14),'trace-receipt',`data-outcome="${esc(trace.outcome)}" title="${esc(historical.direction)} · ${esc(when(trace.at,true))}" aria-label="${esc('View activity · '+trace.outcome+' · '+historical.direction)}"`):
       `<span class="trace-summary">${countText(agents.length,'active agent')} · ${countText((w.status==='active'?1:0)+workspaceApps(w).filter(c=>c.status==='active').length,'connected account')}</span>`;
     const gatewayHTML=goLink('#policies',art.brand(53)+'<strong>Airport</strong><small>Workspace gateway</small>','gateway-node',`data-node="gateway" title="${esc(objects.gateway.info)}" aria-label="View workspace policies"`);
-    const frame={legendHTML:'<span></span>Workspace route',agentsHTML:group(agents,'left'),gatewayHTML,accountsHTML:group(apps,'right'),traceHTML:select+info};
+    const frame={legendHTML:'<span></span>'+(trace?'Request trace':'Workspace route'),agentsHTML:group(agents,'left'),gatewayHTML,accountsHTML:group(apps,'right'),traceHTML:select+info};
     region('gate-map',signature,window.AirportOverview.mapFrame(frame,{icon}));
     $('.diagram')?.classList.toggle('tracing',Boolean(trace));
     graphObserver?.disconnect();graphObserver=new ResizeObserver(scheduleMap);graphObserver.observe($('#gate-map .diagram'));scheduleMap();
@@ -651,6 +651,33 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(name==='crumb'&&mobileRail.matches)drawer=true;
     if(name==='workspace'||name==='crumb'){workspaceMenu=!workspaceMenu;updateRail(true);}
   }
+  const workspacePicker=$('.ws-wrap');
+  function closeWorkspaceMenu() {
+    workspaceMenu=false;
+    updateRail();
+  }
+  workspacePicker.addEventListener('keydown',e=>{
+    if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
+    if(!workspaceMenu && e.target!==$('#ws-button')) return;
+    e.preventDefault();
+    if(!workspaceMenu) {
+      workspaceMenu=true;
+      updateRail(true);
+      return;
+    }
+    const choices=[...$('#workspace-menu').querySelectorAll('button:not(:disabled)')];
+    const index=choices.indexOf(document.activeElement);
+    if(!choices.length) return;
+    if(e.key==='Home') choices[0].focus();
+    else if(e.key==='End') choices.at(-1).focus();
+    else choices[(index+(e.key==='ArrowDown'?1:-1)+choices.length)%choices.length].focus();
+  });
+  document.addEventListener('pointerdown',e=>{
+    if(workspaceMenu && !workspacePicker.contains(e.target) && !e.target.closest('[data-shell="crumb"]')) closeWorkspaceMenu();
+  });
+  document.addEventListener('focusin',e=>{
+    if(workspaceMenu && !workspacePicker.contains(e.target) && !e.target.closest('[data-shell="crumb"]')) closeWorkspaceMenu();
+  });
   mobileRail.addEventListener('change',()=>dismissRail());
   document.addEventListener('keydown',e=>{
     if(e.key==='Escape'&&(workspaceMenu||drawer)){

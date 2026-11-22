@@ -1,0 +1,163 @@
+/* Connected apps, tool permissions and request receipts use the same paper surfaces. */
+.rg-panel .rg-heading,
+.cp-panel .cp-section-head,
+.acct-block .acct-block-head,
+.int-detail .panel-head {
+  background: #eff2e2;
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+}
+.rg-heading h2, .cp-panel .cp-section-head h3, .acct-block-head h2,
+.int-browser .section-bar h2, .int-detail .panel-head h2 {
+  font: 720 clamp(1.1rem, 1.5vw, 1.35rem)/1.23 var(--display);
+  letter-spacing: -.035em;
+}
+.rg-panel .rg-heading > .rg-chip,
+.rg-heading [data-rg-count] {
+  padding: .22em .58em;
+  border: 1px solid #c6d1b7;
+  border-radius: 5px;
+  background: #fbfcef;
+  color: #455b43;
+  font: 500 .76rem/1.25 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.rg-page .rg-id strong, .int-browser .dir-card strong {
+  font-size: .985rem;
+  letter-spacing: -.02em;
+  color: var(--text);
+}
+.rg-mark, .rg-agent-icon, .rg-entity .rg-mark.native {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #cad3bf;
+  border-radius: 10px;
+  background: #f5f5e8;
+}
+.rg-entity .rg-mark.native { background: #fffff8 }
+.rg-entity .rg-meta strong, .rg-request time, .rg-request > svg,
+.cp-page .cp-request > svg, .rg-archive > summary { color: var(--muted) }
+.rg-entity:hover, .rg-request:hover, .int-detail .linked-account:hover,
+.cp-page .cp-request:hover, .rg-archive > summary:hover { background: #eff3e3 }
+.rg-empty strong, .cp-page .cp-empty h3 { color: var(--text) }
+.rg-empty p { margin-top: 4px }
+.rg-page .rg-filters label > span, .int-browser .dir-controls .field > span,
+.cp-page .cp-field > span, .rg-endpoint > span { font-size:.8rem; color:var(--muted); font-weight:600 }
+.badge, .rg-chip, .cp-page .cp-outcome {
+  font-weight: 600;
+  padding: .28em .66em;
+  border: 1px solid #c3cdbd;
+  border-radius: 5px;
+  background: #eef1e7;
+  color: #45564b;
+}
+.badge.good, .rg-chip.allow, .cp-page .cp-outcome[data-tone="allow"], .acct-verified {
+  border-color: #b3cb9d; background: #e0efcf; color: #2c552e;
+}
+.badge.stop, .rg-chip.block, .cp-page .cp-outcome[data-tone="block"] {
+  border-color: #ddbaad; background: #f8e5db; color: #843d2d;
+}
+.badge.ask, .rg-chip.ask {
+  border-color: #d5c588; background: #f9efc8; color: #6b541c;
+}
+/* The older chart palette marks .good and .stop as important. Scope the receipt colors to badges. */
+.badge.good { background-color:#e0efcf !important }
+.badge.stop { background-color:#f8e5db !important }
+.rg-page .rg-entity:focus-visible, .rg-page .rg-request:focus-visible,
+.int-detail .linked-account:focus-visible, .cp-page .cp-request:focus-visible { outline-offset:-3px }
+
+.int-browser .popular-section { margin-bottom: 5px }
+.int-browser .popular-grid, .int-browser .int-results { gap: 10px }
+.int-browser .dir-card {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text);
+  text-decoration: none;
+  transition: background .12s, border-color .12s;
+}
+.int-browser .popular-grid .dir-card { background: #eff2df }
+.int-browser .dir-card:hover, .int-browser .dir-card:focus-visible {
+  background: #e9efd9;
+  border-color: #819a75;
+}
+.int-browser .dir-card:hover > svg, .int-browser .dir-card:focus-visible > svg { color: var(--text) }
+.int-browser .dir-card small, .int-browser .dir-card > svg,
+.int-detail .app-description, .int-detail .facts code, .int-browser .int-pager { color: var(--muted) }
+.int-browser .dir-logo, .int-detail .dir-logo { background:#dce7c4; color:#334f35; border:1px solid #c5cfb7 }
+.int-browser .dir-logo.real-mark, .int-detail .dir-logo.real-mark { background:#fffff9; border-color:#d1d7c9 }
+.int-browser .int-directory .dir-controls {
+  padding-bottom: 17px;
+  margin-bottom: 17px;
+  border-bottom: 1px dashed var(--line);
+}
+.int-browser .int-note button, .int-detail .int-note button,
+.int-detail .int-reference { color: #385e3c; text-underline-offset: 3px }
+
+.cp-page .section-tabs { gap: 4px; align-items: stretch; padding-bottom: 5px }
+.cp-page .section-tabs a {
+  padding: .5rem .85rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.cp-page .section-tabs a:hover { background:#edf0df; color:var(--text) }
+.cp-page .section-tabs a[aria-current="page"] {
+  border-color:#b7c59f; box-shadow:none; background:#e3edcb; color:#223e2c;
+}
+.cp-page .cp-toolbar { background:#f7f7ec }
+.cp-page .cp-toolbar form { background:var(--panel) }
+.cp-page .cp-toolbar form:focus-within { outline-color: #3b6644 }
+.cp-page .cp-label-value, .rg-endpoint input[readonly] { background:#f4f4e9; color:var(--text) }
+.cp-page .cp-text-link { color:#375b3b; font-weight:600 }
+.cp-page .cp-kind { padding:.2em .52em; border:1px solid #c8d1be; border-radius:4px; color:#4a5a47; background:#f1f4e7 }
+.cp-page .permission-row.is-staged { background:#faf3d6; box-shadow: inset 3px 0 #a88422 }
+.cp-page .cp-permission small { color:#725316; font-weight:600 }
+.cp-page [data-cp-tool]:has(option:checked[value="allow"]) { border-color:#a7be97; background-color:#e7f0dc; color:#294d30 }
+.cp-page [data-cp-tool]:has(option:checked[value="block"]) { border-color:#d0b7a6; background-color:#f6ebe1; color:#6e4032 }
+.cp-page .cp-warning { border-color:#d9c98b; background:#f9f1d2; color:#6c541d }
+.cp-page .cp-feedback, .cp-page .cp-group-feedback { border-color:#718d52; color:#34563a }
+.cp-page .cp-error, .cp-page .cp-tool-txt .cp-error, .acct-feedback.is-error { color:#8b3828 }
+.cp-page .cp-feedback.cp-error, .cp-page .cp-group-feedback.cp-error { border-color:#ab5844 }
+
+#muse .pending { border-color:#d5c588; background:#faf2d5; color:#664f1c }
+#permissions .results { background:#eaf0df; color:#2c4b34 }
+#mail .body > details > summary, #muse .body > details > summary { color:var(--text) }
+.audit-labels, .policy-group-head { background:#eef1df; color:var(--muted) }
+.audit-entry > summary:hover, .audit-entry[open] > summary { background:#edf2df }
+.audit-entry > summary:focus-visible { outline-color:#3b6644 }
+.audit-full { background:var(--panel); border-top-style:dashed }
+.audit-payloads section { background:#f7f5e9; color:var(--text); border-color:#c6ceba }
+.audit-payloads h3 { font:690 .98rem/1.25 var(--display); letter-spacing:-.015em }
+.audit-payloads pre { color:#254336; font-size:.76rem; line-height:1.55 }
+.audit-payloads p, .policy-operation code { color:var(--muted) }
+.acct-verified { border:1px solid #bacba6; border-radius:5px; padding:.18rem .43rem }
+.acct-feedback { color:#355737 }
+.acct-copy-result { background:#f0f3df }
+.acct-state[data-state="pending"] { color:#765a1b }
+.acct-state[data-state="accepted"] { color:#335d33 }
+.registry-tag, .row-link, .directory-tool code { color:var(--muted) }
+.row-link:hover, .directory-app:hover { background:#e9efdd }
+.directory-search { background:var(--panel); border-color:var(--line) }
+.directory-tool small { color:#6b541c }
+.app-monogram { background:#dae6c5; color:#28432f }
+#dialog .agent-client-preview { border:1px solid var(--line); border-radius:7px; background:#f2f4e5 }
+#dialog .agent-invite-choice > summary { color: var(--text) }
+@media (max-width:650px) {
+  .int-browser .popular-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .int-browser .popular-grid .dir-card { gap:7px; padding:8px }
+  .rg-entity .rg-mark,.rg-entity .rg-agent-icon { width:32px;height:32px;border-radius:8px }
+  .rg-agent-icon .agent-icon { max-width:27px;max-height:27px }
+  .rg-page .rg-filters { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) }
+  .rg-page .rg-filters input,.rg-page .rg-filters select { width:100%;min-width:0 }
+  .cp-page .cp-permission, .cp-page .cp-field { min-width:0 }
+  .cp-page .cp-toolbar form { width:0 }
+}
+@media (max-width:480px) {
+  .cp-page .section-tabs a { padding:.45rem .64rem }
+  .rg-page .audit-full { padding:14px 12px }
+  .cp-page .cp-tool-title,.cp-page .cp-tool-title strong { min-width:0 }
+}

@@ -8,10 +8,15 @@ import {createToolRunner} from './agent.mjs';
 
 const appRoot = path.dirname(fileURLToPath(import.meta.url));
 const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"};
+const publicBrandAssets = new Map(['bricolage-latin','public-sans-regular','public-sans-semibold'].map(name=>
+  ['/assets/'+name+'.woff2', ['../dist/'+name+'.woff2','font/woff2']]
+));
+publicBrandAssets.set('/assets/access-airfield.svg',['ui/access-airfield.svg','image/svg+xml']);
 const assets=new Map([
+  ...publicBrandAssets,
   ['/', ['ui/index.html','text/html; charset=utf-8']],
   ['/app.js', [['../dist/discovery-data.js','../dist/overview.js','ui/integrations.js','ui/connection-pages.js','ui/registries.js','ui/account.js','ui/workspace.js'],'text/javascript']],
-  ['/style.css', [['../dist/style.css','ui/workspace.css','ui/integrations.css','ui/connection-pages.css','ui/registries.css','ui/account.css'],'text/css']],
+  ['/style.css', [['../dist/style.css','ui/workspace.css','ui/integrations.css','ui/connection-pages.css','ui/registries.css','ui/account.css','ui/access.css','ui/console-theme.css','ui/control-theme.css','ui/overview-theme.css'],'text/css']],
   ['/assets/agent-icons.js',['../dist/agent-icons.js','text/javascript']],
   ['/assets/agent-icons.css',['../dist/agent-icons.css','text/css']],
   ...agentIcons.catalog.map(({key})=>['/assets/agents/'+key+'.png',['../dist/agents/'+key+'.png','image/png']]),
@@ -20,6 +25,9 @@ const assets=new Map([
   ['/favicon.svg',['../dist/favicon.svg','image/svg+xml']],['/assets/favicon.svg',['../dist/favicon.svg','image/svg+xml']]
 ]);
 function json(res,status,data,extras={}) {res.writeHead(status,{...headers,'Content-Type':'application/json; charset=utf-8',...extras});res.end(JSON.stringify(data));}
+export function serveBrandAsset(req,res,pathname) {
+  return publicBrandAssets.has(pathname) && serveOwnerAsset(req,res,pathname);
+}
 export async function serveOwnerAsset(req,res,pathname) {
   const spec=assets.get(pathname);
   if(!spec || !['GET','HEAD'].includes(req.method))return false;
