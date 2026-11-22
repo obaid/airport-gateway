@@ -9,14 +9,25 @@ const appRoot = path.dirname(fileURLToPath(import.meta.url));
 const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"};
 const assets=new Map([
   ['/', ['ui/index.html','text/html; charset=utf-8']],
-  ['/app.js', [['../dist/discovery-data.js','../dist/overview.js','ui/integrations.js','ui/connection-pages.js','ui/registries.js','ui/workspace.js'],'text/javascript']],
-  ['/style.css', [['../dist/style.css','ui/workspace.css','ui/integrations.css','ui/connection-pages.css','ui/registries.css'],'text/css']],
+  ['/app.js', [['../dist/discovery-data.js','../dist/overview.js','ui/integrations.js','ui/connection-pages.js','ui/registries.js','ui/account.js','ui/workspace.js'],'text/javascript']],
+  ['/style.css', [['../dist/style.css','ui/workspace.css','ui/integrations.css','ui/connection-pages.css','ui/registries.css','ui/account.css'],'text/css']],
   ['/assets/icons.js',['../dist/icons.js','text/javascript']],['/assets/public.ttf',['../dist/public.ttf','font/ttf']],
   ['/assets/public-semibold.ttf',['../dist/public-semibold.ttf','font/ttf']],['/assets/plex.ttf',['../dist/plex.ttf','font/ttf']],
   ['/favicon.svg',['../dist/favicon.svg','image/svg+xml']],['/assets/favicon.svg',['../dist/favicon.svg','image/svg+xml']]
 ]);
 function json(res,status,data,extras={}) {res.writeHead(status,{...headers,'Content-Type':'application/json; charset=utf-8',...extras});res.end(JSON.stringify(data));}
-async function body(req,ownerOrigin) {
+export async function serveOwnerAsset(req,res,pathname) {
+  const spec=assets.get(pathname);
+  if(!spec || !['GET','HEAD'].includes(req.method))return false;
+  const [file,type]=spec;
+  const data=Array.isArray(file)
+    ? (await Promise.all(file.map(part=>readFile(path.join(appRoot,part),'utf8')))).join('\n')
+    : await readFile(path.join(appRoot,file));
+  res.writeHead(200,{...headers,'Content-Type':type});
+  res.end(req.method==='HEAD' ? undefined : data);
+  return true;
+}
+export async function body(req,ownerOrigin) {
   if(req.headers.origin && req.headers.origin!==ownerOrigin)fail('Use the Airport owner console.',403);
   if(req.headers['x-airport-console']!=='1'||!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))fail('Use the Airport owner console.',403);
   const chunks=[];let n=0;
@@ -39,13 +50,7 @@ export function createOwnerHandler({store,requireOwner,ownerOrigin,publicBase,lo
       if(req.headers.host!==new URL(ownerOrigin).host)fail('Invalid host.',403);
       const u=new URL(req.url,ownerOrigin),p=u.pathname;
       const publicURL=typeof publicBase==='function'?publicBase():publicBase;
-      if(req.method==='GET'&&assets.has(p)){
-        const [file,type]=assets.get(p);
-        const data=Array.isArray(file)
-          ? (await Promise.all(file.map(part=>readFile(path.join(appRoot,part),'utf8')))).join('\n')
-          : await readFile(path.join(appRoot,file));
-        res.writeHead(200,{...headers,'Content-Type':type});return res.end(data);
-      }
+      if(await serveOwnerAsset(req,res,p))return;
       if(p==='/oauth/done'&&req.method==='GET'){
         // The callback is only navigation. The owner session checks a server-held
         // connection attempt and verifies its Gmail profile before activating it.

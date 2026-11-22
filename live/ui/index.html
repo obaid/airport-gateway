@@ -9,6 +9,7 @@
   <script defer src="/assets/icons.js"></script><script defer src="/app.js"></script>
 </head>
 <body>
+<main id="account-access" class="account-access" hidden aria-labelledby="access-title"></main>
 <a class="skip" href="#main">Skip to content</a>
 <div class="shell">
   <aside id="sidebar" aria-label="Workspace navigation">
@@ -28,7 +29,18 @@
       <a class="nav-item" href="#policies" data-nav="policies"><span data-icon="shield"></span><span>Policies</span></a>
       <a class="nav-item" href="#activity" data-nav="activity"><span data-icon="activity"></span><span>Activity</span></a>
     </nav>
-    <div class="sidebar-foot"><div class="owner-avatar"><span data-icon="personal"></span></div><div><strong>Workspace owner</strong><small id="console-foot">Owner console</small></div></div>
+    <div class="sidebar-foot" id="local-account"><div class="owner-avatar"><span data-icon="personal"></span></div><div><strong>Workspace owner</strong><small id="console-foot">Owner console</small></div></div>
+    <div class="account-dock" id="account-dock" hidden>
+      <button class="account-switch" id="account-switch" type="button" aria-controls="account-popover" aria-expanded="false">
+        <span class="account-avatar" id="account-avatar" aria-hidden="true"></span>
+        <span class="account-switch-text"><strong id="account-switch-name"></strong><small>Your account</small></span><span data-icon="chevrons"></span>
+      </button>
+      <div class="account-popover" id="account-popover" hidden>
+        <p id="account-menu-email"></p>
+        <a href="#account" data-route="#account"><span data-icon="settings"></span>Account settings</a>
+        <a href="/cdn-cgi/access/logout" data-account-logout><span data-icon="arrow-up-right"></span>Sign out</a>
+      </div>
+    </div>
   </aside>
   <div class="scrim" data-shell="dismiss" aria-hidden="true"></div>
   <div class="stage">

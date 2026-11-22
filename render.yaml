@@ -22,6 +22,8 @@ services:
         sync: false
       - key: AIRPORT_AGENT_BASE
         sync: false
+      - key: AIRPORT_SIGNUP_MODE
+        value: open
       - key: CF_ACCESS_ISSUER
         sync: false
       - key: CF_ACCESS_AUD

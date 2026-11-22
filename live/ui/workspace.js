@@ -360,7 +360,8 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     integrations:{name:'Integrations',title:'Integrations'},
     agents:{name:'Agents',title:'Agents'},
     policies:{name:'Policies',title:'Policies'},
-    activity:{name:'Activity',title:'Activity'}
+    activity:{name:'Activity',title:'Activity'},
+    account:{name:'Account settings',title:'Account settings'}
   };
   window.AirportPages ||= {};
   let mountedKey='',mountedWorkspace='',mountedCatalog=null,mountedModule=null,componentSignature='',requestedAudit='';
@@ -393,6 +394,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function resetPage(){
     graphObserver?.disconnect();cancelAnimationFrame(graphFrame);closeDialog();
+    window.AirportAccount?.unmount();
     mountedModule?.links?.disconnect();
     mountedModule=null;componentSignature='';requestedAudit='';
     for(const id of panelIds){const el=$('#'+id);el.hidden=true;el.replaceChildren();regions.delete(id);}
@@ -469,7 +471,8 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       integrations:'Find an app to connect to '+w.name+'.',
       agents:r.id?'Access to the '+w.name+' workspace.':'Assistants with access to '+w.name+'.',
       policies:'Choose which tools agents can use in '+w.name+'.',
-      activity:'Requests and decisions recorded in '+w.name+'.'
+      activity:'Requests and decisions recorded in '+w.name+'.',
+      account:'Your profile and sign-in details.'
     };
     const account=r.page==='connections' && r.id==='pilot-gmail'?{toolkit:'gmail',status:w.status}:connection;
     const pageHeading=$('#page-title');
@@ -483,8 +486,12 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       ? (account.label||w.email||w.expectedEmail||'Gmail account')+' · '+w.name
       : selectedApp?'Integration details and connected accounts in '+w.name+'.':description[r.page]||'This page could not be found in your workspace.';
     document.title=title+' · '+w.name+' · Airport';
-    $('#crumb').textContent=w.name;
+    $('#crumb').textContent=w.name;$('#crumb').title='Switch workspace';
     $('#crumb-section').innerHTML=section&&r.id?`<a data-route="#${r.page}" href="${esc(hrefFor('#'+r.page))}">${esc(section.name)}</a><b>/</b><span>${esc(r.page==='connections'?prettyName(r.tab):r.page==='activity'?'Request':r.page==='agents'?title:'Workspace policy')}</span>`:esc(section?.name||'Page');
+    if(r.page==='account'){
+      $('#crumb').textContent='Airport';$('#crumb').title='Return to workspace overview';
+      document.title='Account settings · Airport';
+    }
     const actions=[];
     if(account){
       const statuses={active:'Connected',pending:'Awaiting sign-in',disabled:'Disconnected',disconnected:'Disconnected',mismatch:'Address mismatch'};
@@ -493,7 +500,10 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(!r.id && r.page==='agents'&&supportsCatalog())actions.push(`<button class="btn primary" type="button" data-manage="agent-add">${icon('plus',16)}Add agent</button>`);
     if(r.page==='integrations'&&!selectedApp)actions.push(goLink('#connections',icon('connections',15)+'Connected accounts','btn'));
     if(!r.id&&['policies','activity'].includes(r.page))actions.push(`<button class="btn ${r.page==='activity'?'primary':''}" type="button" data-manage="test-request">${icon('play',14)}Test a request</button>`);
-    if(r.page==='overview'){
+    if(r.page==='overview' && supportsCatalog() && !pilotConnected(w) && !workspaceApps(w).length){
+      $('#subtitle').textContent='Connect an app to choose which tools agents can use in '+w.name+'.';
+      actions.push(goLink('#integrations',icon('plus',16)+'Connect an app','btn primary'));
+    }else if(r.page==='overview'){
       actions.push(`<button type="button" class="btn" data-manage="test-request">${icon('play',14)}Test request</button>`);
       if(supportsCatalog())actions.push(`<button type="button" class="btn primary" data-manage="agent-add">${icon('plus',16)}Add agent</button>`);
     }
@@ -563,6 +573,10 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function renderPage(w,r){
     renderShell(w,r);
+    if(r.page==='account'&&window.AirportAccount?.signedIn()){
+      window.AirportAccount.settings(reveal('module-page'));
+      return;
+    }
     if(r.page==='overview'){reveal('workspace-summary');reveal('overview-feed');workspaceSummary(w);reveal('gate-map');graph(w,gatewayObjects(w));return;}
     const registry=window.AirportPages.registries;
     if(registry && (r.page==='connections'&&!r.id || r.page==='agents'&&r.id!=='muse' || r.page==='activity')){
@@ -623,6 +637,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     updateRail();
   }
   function shellAction(name){
+    if(name==='crumb'&&parseRoute().page==='account'){navigate('#overview');return;}
     if(name==='dismiss'){dismissRail(true);return;}
     if(name==='mobile'){drawer=true;updateRail(true);return;}
     if(name==='crumb'&&mobileRail.matches)drawer=true;
@@ -1111,6 +1126,10 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       const raw=location.hash.slice(7);
       history.replaceState(null,'',location.pathname+location.search);
       try { await request('session',{ticket:decodeURIComponent(raw)}); } catch(e){ network(e.message);return; }
+    }
+    if(!['localhost','127.0.0.1','[::1]'].includes(location.hostname)){
+      const active=await window.AirportAccount.connect();
+      if(!active)return;
     }
     await tick();
     if(!terminal){setInterval(tick,3000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});}

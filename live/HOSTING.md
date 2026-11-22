@@ -23,6 +23,16 @@ Render probes `GET /healthz` directly. The gateway returns an empty `204` when i
 
 ## Runtime and persistent storage
 
+### Customer accounts
+
+Set `AIRPORT_SIGNUP_MODE=open` for self-service registration. A customer verifies an email with the configured Cloudflare Access identity provider and chooses a display name. Each account starts with its own Personal and Work workspaces. Existing workspace owners retain their data through the same verified Access issuer and subject. Changing a display name does not change the gateway URL.
+
+For the open configuration, use an **Allow** policy on the console hostname that requires a verified email login, such as the One-time PIN login method. Keep the gateway hostname outside that browser login. To publish the sign-in page, add a more specific Access application for the console's `/welcome` path with a Bypass policy scoped to that public destination. At the origin, only an exact GET or HEAD for `/welcome` serves public HTML. `/login`, account APIs, OAuth callbacks and workspace routes require a signed Access assertion. Make the broader login policy active only after the account-aware server is deployed. [Access policies](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/) · [Access application paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
+
+To bind the platform administrator, set `AIRPORT_BOOTSTRAP_OWNER_EMAIL` to the verified address and `AIRPORT_BOOTSTRAP_OWNER_TENANT` to its 64-character account key. The signed-in account API exposes this key at `identity.accountKey`. Existing owners can also identify it in their verified gateway URL. Both values must match the identity for the administrator grant. New self-service accounts receive the member role.
+
+Account profiles are stored in `accounts.sqlite3` at the root of the persistent data directory. Include the registry and the tenant databases in consistent backups, together with the separately stored tenant secret. Self-hosters can select `AIRPORT_SIGNUP_MODE=invite` for invitations bound to individual verified addresses. Registering a customer consumes the identity provider's applicable seat allowance.
+
 Use Node.js 22.16 or later with built-in `node:sqlite` support. From the repository root, install the locked dependency and run the isolated tests.
 
 ```sh

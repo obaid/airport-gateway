@@ -1,0 +1,84 @@
+/* Account controls use the same surfaces and typography as workspace controls. */
+.account-dock[hidden], #local-account[hidden], #account-access[hidden],
+#account-popover[hidden], .acct-field[hidden] { display:none }
+.account-dock {
+  position:relative; margin:auto 12px 0; border-top:1px solid var(--line); padding:10px 0 13px;
+}
+.account-switch {
+  display:flex; align-items:center; text-align:left; width:100%; min-height:52px;
+  gap:10px; padding:8px; border-radius:7px; color:var(--ink);
+}
+.account-switch:hover, .account-switch[aria-expanded="true"] {background:var(--soft)}
+.account-avatar {
+  display:grid; flex:0 0 32px; width:32px; height:32px; place-items:center;
+  border-radius:50%; background:#d3d8c9; color:#263020; font-size:12px; font-weight:600;
+}
+.account-switch-text {min-width:0; flex:1}
+.account-switch-text strong,.account-switch-text small {display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.account-switch-text strong {font-size:14px}
+.account-switch-text small,.account-switch > [data-icon] {color:var(--dim);font-size:12px}
+.account-popover {
+  position:absolute; left:0; bottom:calc(100% + 2px); z-index:8; min-width:100%; width:max-content; max-width:min(270px,85vw);
+  padding:5px; background:var(--card); border:1px solid var(--line); border-radius:9px; box-shadow:0 8px 24px #0006;
+}
+.account-popover p {color:var(--dim);font-size:12px; padding:9px 8px; border-bottom:1px solid var(--line); margin:0 0 4px; overflow-wrap:anywhere}
+.account-popover a {display:flex; align-items:center; gap:9px; color:var(--ink);padding:9px 8px; border-radius:5px; text-decoration:none;font-size:14px}
+.account-popover a:hover,.account-popover a:focus-visible {background:var(--soft)}
+.acct-onboarding > .shell,.acct-onboarding > .skip {display:none}
+.account-access {min-height:100svh;background:var(--base,#141615);color:var(--ink)}
+.acct-entry-header {padding:23px clamp(20px,5vw,80px);border-bottom:1px solid var(--line)}
+.acct-brand {display:inline-flex;align-items:center;gap:10px;font-size:23px;font-weight:600;letter-spacing:-.055em}
+.acct-entry-panel {
+  width:min(calc(100% - 32px),430px);margin:clamp(32px,8vh,92px) auto 48px;
+  padding:clamp(22px,4vw,32px);background:var(--card);border:1px solid var(--line);border-radius:12px;
+}
+.acct-entry-mark {display:grid;place-items:center;width:40px;height:40px;margin-bottom:22px;border-radius:9px;background:#30372a;color:var(--lime)}
+.acct-entry-panel h1 {font-size:clamp(29px,4.2vw,38px);line-height:1.08;letter-spacing:-.055em;margin:0 0 10px;font-weight:600}
+.acct-entry-panel h1:focus {outline:none}
+.acct-entry-description,.acct-block-head p {color:var(--dim);line-height:1.55;font-size:14px}
+.acct-identity {display:flex;align-items:center;gap:7px;color:#ced7c4;font-size:13px;line-height:1.5;overflow-wrap:anywhere;margin:17px 0 0}
+.acct-icon {display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.acct-join-form {display:grid;gap:14px;margin-top:24px}
+.acct-join-form > .btn {margin-top:3px;justify-content:center}
+.acct-entry-foot {border-top:1px solid var(--line);margin-top:20px;padding-top:16px;font-size:13px}
+.acct-text-link {color:var(--dim);text-underline-offset:3px}
+.acct-text-link:hover {color:var(--ink)}
+.acct-actions {display:flex;flex-wrap:wrap;gap:10px;margin-top:23px}
+body[data-page="account"] #module-page {display:grid;gap:18px;max-width:800px}
+.acct-block {padding:0;overflow:hidden}
+.acct-block-head,.acct-profile-form,.acct-invite-form,.acct-copy-result,.acct-details,.acct-invite-list {padding:20px clamp(16px,2vw,26px)}
+.acct-block-head {border-bottom:1px solid var(--line)}
+.acct-block-head h2 {font-size:18px;letter-spacing:-.025em;margin:0 0 4px}
+.acct-form-line {display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.acct-form-line .acct-field {flex:1 1 230px}
+.acct-field {display:grid;gap:7px;min-width:0;font-size:13px;font-weight:600;color:var(--ink)}
+.acct-field input {width:100%;box-sizing:border-box;border:1px solid var(--line);color:var(--ink);background:var(--base);border-radius:6px;padding:0 12px;line-height:1.4;min-height:40px;font:inherit;font-weight:400}
+.acct-form-line > .btn,.acct-join-form > .btn {min-height:40px}
+.acct-field input[readonly] {color:var(--dim);font-family:var(--mono);font-size:12px}
+.acct-details {margin:0;padding-block:0}
+.acct-details > div {display:grid;grid-template-columns:minmax(90px,25%) 1fr;gap:12px;border-top:1px solid var(--line);padding:16px 0;line-height:1.5}
+.acct-details dt {color:var(--dim);font-size:13px}
+.acct-details dd {display:flex;flex-wrap:wrap;align-items:center;gap:8px;overflow-wrap:anywhere;min-width:0;margin:0;font-size:14px}
+.acct-verified {display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#c5dea2}
+.acct-feedback {font-size:13px;line-height:1.5;color:#cadcb8;overflow-wrap:anywhere}
+.acct-feedback:not(:empty) {margin-top:9px}
+.acct-feedback:empty,.acct-copy-result:empty {display:none}
+.acct-feedback.is-error {color:#f0b2a9}
+.acct-copy-result {background:#21281e;border-top:1px solid var(--line)}
+.acct-hint,.acct-empty,.acct-invite-info small {font-size:13px;color:var(--dim);line-height:1.5}
+.acct-hint {margin-top:7px}
+.acct-invite-list {border-top:1px solid var(--line);padding-block:13px}
+.acct-list-title {font-size:14px;margin:5px 0 8px}
+.acct-invite-row {display:flex;gap:12px;align-items:center;flex-wrap:wrap;min-height:55px;padding:10px 0;border-top:1px solid var(--line)}
+.acct-invite-info {flex:1 1 160px;min-width:0;overflow-wrap:anywhere}
+.acct-invite-info strong,.acct-invite-info small {display:block}
+.acct-invite-info strong {font-size:14px}
+.acct-state {color:var(--dim);font-size:12px}
+.acct-state[data-state="pending"] {color:#ead197}.acct-state[data-state="accepted"] {color:#c5dea2}
+.acct-revoke-confirm {display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12px}
+@media(max-width:480px) {
+  .acct-entry-header {padding:16px 20px}
+  .acct-entry-panel {margin-top:35px}
+  .acct-details > div {grid-template-columns:1fr;gap:5px}
+  .acct-invite-info {flex-basis:100%}
+}

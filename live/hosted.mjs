@@ -1,14 +1,15 @@
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { chmodSync, constants, lstatSync, mkdirSync } from 'node:fs';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRemoteJWKSet, customFetch, jwtVerify } from 'jose';
 import { createComposio } from './composio.mjs';
 import { createCatalog, parseProjectAuthConfigs } from './catalog.mjs';
-import { createOwnerHandler } from './owner.mjs';
+import { body as readOwnerBody, createOwnerHandler, serveOwnerAsset } from './owner.mjs';
 import { createToolRunner, makeAgentHandler } from './agent.mjs';
+import { canonicalEmail, createAccounts } from './accounts.mjs';
 import { createStore } from './store.mjs';
 
 const gatewayRoutes = new Set(['/mcp','/api/gmail/inbox-counts','/airport/connect','/pair/start','/pair/token','/agents/register']);
@@ -43,6 +44,12 @@ export function readHostedConfig(env = process.env) {
   const authConfigs = parseProjectAuthConfigs(env.AIRPORT_AUTH_CONFIGS_JSON);
   const verifierPath = env.AIRPORT_COMPOSIO_VERIFIER_PATH || '';
   if (verifierPath && (!/^\/oauth\/[\w-]+$/.test(verifierPath) || verifierPath==='/oauth/done')) throw Error('Invalid AIRPORT_COMPOSIO_VERIFIER_PATH.');
+  const signupMode = env.AIRPORT_SIGNUP_MODE ?? 'invite';
+  if(!['invite','open'].includes(signupMode))throw Error('Set AIRPORT_SIGNUP_MODE to invite or open.');
+  const bootstrapEmail=env.AIRPORT_BOOTSTRAP_OWNER_EMAIL ? canonicalEmail(env.AIRPORT_BOOTSTRAP_OWNER_EMAIL) : null;
+  const bootstrapTenant=env.AIRPORT_BOOTSTRAP_OWNER_TENANT || null;
+  if(env.AIRPORT_BOOTSTRAP_OWNER_EMAIL && !bootstrapEmail)throw Error('Set a valid AIRPORT_BOOTSTRAP_OWNER_EMAIL.');
+  if(bootstrapTenant && (!bootstrapEmail || !/^[a-f0-9]{64}$/.test(bootstrapTenant)))throw Error('Set the bootstrap tenant alongside its verified owner email.');
   const port = Number(env.PORT ?? 8080);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error('Invalid listening PORT.');
   const maintenance = env.AIRPORT_MAINTENANCE ?? '0';
@@ -51,14 +58,26 @@ export function readHostedConfig(env = process.env) {
     ownerOrigin:owner.origin,agentBase:agent.href.replace(/\/$/,''),
     issuer:issuer.origin,audience:env.CF_ACCESS_AUD.trim(),secret,dataDir:env.AIRPORT_HOSTED_DATA_DIR,
     apiKey:env.COMPOSIO_API_KEY.trim(),gmailConfig:authConfigs.gmail || env.COMPOSIO_GMAIL_AUTH_CONFIG_ID?.trim() || undefined,authConfigs,verifierPath,
-    host:env.HOST || '127.0.0.1',port,maintenance:maintenance === '1'
+    host:env.HOST || '127.0.0.1',port,maintenance:maintenance === '1',signupMode,bootstrapEmail,bootstrapTenant
   };
 }
 
-function errorResponse(res,status,reason) {
+function errorResponse(res,status,reason,code) {
   const message = reason || {401:'Sign in to Airport with Cloudflare Access.',404:'Route not found.',500:'Airport could not complete the request.'}[status];
   res.writeHead(status,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Type':'application/json; charset=utf-8','X-Content-Type-Options':'nosniff'});
-  res.end(JSON.stringify({error:message}));
+  res.end(JSON.stringify(code ? {error:message,code} : {error:message}));
+}
+
+async function serveWelcome(req,res) {
+  // Only hash code from the deployment's static landing page, before any user input.
+  const html=await readFile(new URL('./ui/welcome.html',import.meta.url),'utf8');
+  const inlineHashes=tag=>Array.from(html.matchAll(new RegExp('<'+tag+'(?:\\s[^>]*)?>([\\s\\S]*?)</'+tag+'>','gi')),
+    match=>"'sha256-"+createHash('sha256').update(match[1]).digest('base64')+"'");
+  const csp=["default-src 'none'",'style-src '+inlineHashes('style').join(' '),'script-src '+inlineHashes('script').join(' '),
+    "img-src 'self' data:","font-src 'self'","frame-ancestors 'none'","base-uri 'none'","form-action 'none'"].join('; ');
+  res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-store',
+    'Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':csp});
+  res.end(req.method==='HEAD'?undefined:html);
 }
 
 export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
@@ -74,6 +93,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
   mkdirSync(dir,{recursive:true,mode:0o700});
   if (!lstatSync(dir).isDirectory()) throw Error('The tenant storage path must be a directory.');
   chmodSync(dir,0o700);
+  const accounts=createAccounts(join(config.dataDir,'accounts.sqlite3'),config);
   const tenants = new Map();
   let closing = false;
 
@@ -83,10 +103,15 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
     try {
       const {payload} = await jwtVerify(assertion,keys,{
         algorithms:['RS256'],issuer:config.issuer,audience:config.audience,
-        requiredClaims:['exp','iat','sub','type']
+        requiredClaims:['exp','iat','sub','type','email']
       });
       if (payload.type !== 'app' || typeof payload.sub !== 'string' || !payload.sub.trim() || payload.sub.length > 512) return null;
-      return createHmac('sha256',config.secret).update(JSON.stringify([config.issuer,payload.sub])).digest('hex');
+      // Access signs the email authenticated by the configured human identity provider.
+      // Service tokens lack a human email; an explicitly unverified IdP email is rejected.
+      const email=canonicalEmail(payload.email);
+      if(!email || payload.common_name || (payload.email_verified!==undefined && payload.email_verified!==true))return null;
+      const tenant=createHmac('sha256',config.secret).update(JSON.stringify([config.issuer,payload.sub])).digest('hex');
+      return {tenant,email};
     } catch { return null; }
   }
 
@@ -155,6 +180,33 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
     } catch {errorResponse(res,409,'Airport could not verify this connection. Return to Airport and restart sign-in.');}
   }
 
+  const sendJSON=(res,status,payload)=>{
+    res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
+      'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});
+    res.end(JSON.stringify(payload));
+  };
+  const session=(person,account)=>({identity:{email:person.email,accountKey:person.tenant},account,signupMode:config.signupMode});
+  async function accountAPI(req,res,target,person,account) {
+    if(req.method==='GET' && target==='/api/account')return sendJSON(res,200,session(person,account));
+    if(req.method==='GET' && target==='/api/account/invitations')
+      return sendJSON(res,200,{invitations:accounts.listInvitations(person)});
+    if(req.method!=='POST')return errorResponse(res,404);
+    const form=await readOwnerBody(req,config.ownerOrigin);
+    switch(target) {
+      case '/api/account/signup':
+        return sendJSON(res,201,session(person,accounts.signup(person,form.displayName,form.token)));
+      case '/api/account/profile':
+        return sendJSON(res,200,session(person,accounts.profile(person,form.displayName)));
+      case '/api/account/invitations': {
+        const {invitation,token}=accounts.invite(person,form.email);
+        return sendJSON(res,201,{invitation,inviteUrl:config.ownerOrigin+'/welcome#invite='+token});
+      }
+      case '/api/account/invitations/revoke':
+        return sendJSON(res,200,{invitation:accounts.revoke(person,form.id)});
+      default: return errorResponse(res,404);
+    }
+  }
+
   const server = createServer(async (req,res) => {
     let entry;
     try {
@@ -181,16 +233,29 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
         return await entry.agent(req,res);
       }
       if (host !== ownerHost) return errorResponse(res,404);
-      const tenant = await identity(req);
-      if (!tenant) return errorResponse(res,401);
+      if(target==='/welcome' && ['GET','HEAD'].includes(req.method))return await serveWelcome(req,res);
+      const person = await identity(req);
+      if (!person) return errorResponse(res,401);
+      if(target==='/login' && req.method==='GET') {
+        res.writeHead(303,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',Location:'/'}).end();
+        return;
+      }
+      if(await serveOwnerAsset(req,res,target))return;
+      const tenant=person.tenant;
+      const legacyFile=join(dir,tenant+'.sqlite3');
+      const account=accounts.resolve(person,lstatSync(legacyFile,{throwIfNoEntry:false})?.isFile()===true);
+      if (target==='/api/account' || target.startsWith('/api/account/')) return await accountAPI(req,res,target,person,account);
+      if (!account) return errorResponse(res,403,'Create your Airport account first.','account_required');
       const isVerifier = config.verifierPath && target.split('?')[0]===config.verifierPath;
       entry = acquire(tenant,!isVerifier);
       if (!entry && isVerifier) return errorResponse(res,409,'This owner has no pending Airport connection.');
       if (!entry) return errorResponse(res,500);
       if (isVerifier) return await verifyConnection(req,res,entry.store);
       return await entry.owner(req,res);
-    } catch {
-      if (!res.headersSent) errorResponse(res,500);
+    } catch(error) {
+      if (!res.headersSent && Number.isInteger(error.status) && error.status>=400 && error.status<500)
+        errorResponse(res,error.status,error.message,error.code);
+      else if (!res.headersSent) errorResponse(res,500);
       else if (!res.writableEnded) res.end();
     } finally {
       if (entry) entry.users--;
@@ -200,6 +265,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
   server.on('close',() => {
     closing = true;
     trim();
+    accounts.close();
   });
   return server;
 }

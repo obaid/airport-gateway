@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdtempSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import { createHash, createHmac } from 'node:crypto';
+import { createStore } from './store.mjs';
+import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,12 +22,12 @@ const fetchKeys = async url => {
 const env = dir => ({
   AIRPORT_OWNER_ORIGIN:'https://'+ownerHost,AIRPORT_AGENT_BASE:'https://'+agentHost+'/airport/v1',
   AIRPORT_HOSTED_DATA_DIR:dir,AIRPORT_TENANT_SECRET:Buffer.alloc(32,77).toString('base64url'),
-  CF_ACCESS_ISSUER:team,CF_ACCESS_AUD:audience,COMPOSIO_API_KEY:'synthetic-project-key'
+  CF_ACCESS_ISSUER:team,CF_ACCESS_AUD:audience,COMPOSIO_API_KEY:'synthetic-project-key',AIRPORT_SIGNUP_MODE:'open'
 });
 
 function token(sub,claims={},privateKey=signing.privateKey) {
   const now = Math.floor(Date.now()/1000);
-  return new SignJWT({type:'app',iss:team,aud:[audience],iat:now,exp:now+1200,sub,...claims})
+  return new SignJWT({type:'app',iss:team,aud:[audience],iat:now,exp:now+1200,sub,email:sub+'@example.com',...claims})
     .setProtectedHeader({alg:'RS256',kid:'test'}).sign(privateKey);
 }
 
@@ -41,9 +43,9 @@ async function listen(config,overrides={}) {
   server.listen(0,'127.0.0.1');
   await once(server,'listening');
   const port = server.address().port;
-  function send(host,path,headers={},data) {
+  function send(host,path,headers={},data,method=data === undefined ? 'GET':'POST') {
     return new Promise((resolve,reject) => {
-      const req = request({hostname:'127.0.0.1',port,path,method:data === undefined ? 'GET':'POST',headers:{host,...headers}},res=>{
+      const req = request({hostname:'127.0.0.1',port,path,method,headers:{host,...headers}},res=>{
         const chunks = [];
         res.on('data',chunk=>chunks.push(chunk));
         res.on('end',()=>{
@@ -60,7 +62,12 @@ async function listen(config,overrides={}) {
     'cf-access-jwt-assertion':assertion,'x-airport-console':'1','content-type':'application/json',origin:'https://'+ownerHost
   },data);
   const close = () => new Promise(resolve => server.close(resolve));
-  return {send,owner,close};
+  const signup=async(assertion,displayName='Test user')=>{
+    const result=await owner(assertion,'/api/account/signup',{displayName});
+    assert.equal(result.status,201);
+    return result.body.account;
+  };
+  return {send,owner,close,signup};
 }
 
 test('Render readiness checks tenant storage without creating a tenant or exposing an owner route',async t=>{
@@ -102,7 +109,7 @@ test('owner access verifies the signature, issuer, audience, application-token t
   const otherKey = (await generateKeyPair('RS256')).privateKey;
   const wrong = [
     await token('owner',{iss:'https://other.cloudflareaccess.com'}),await token('owner',{aud:'different-app'}),
-    await token('owner',{type:'org'}),await token('',{common_name:'a service token'}),await token('owner',{exp:1}),
+    await token('owner',{type:'org'}),await token('owner',{email:''}),await token('owner',{email_verified:false}),await token('',{common_name:'a service token'}),await token('owner',{exp:1}),
     await token('owner',{nbf:Math.floor(Date.now()/1000)+90}),await token('owner',{},otherKey),'unsigned.claims.test'
   ];
   for (const assertion of wrong) assert.equal((await app.owner(assertion)).status,401);
@@ -110,7 +117,10 @@ test('owner access verifies the signature, issuer, audience, application-token t
     assert.equal((await app.send(ownerHost,path,{'cf-access-authenticated-user-email':'pretend@example.com'})).status,401);
   }
   assert.deepEqual(readdirSync(join(dir,'tenants')),[]);
-  assert.equal((await app.owner(await token('owner'))).status,200);
+  const user=await token('owner');
+  assert.equal((await app.owner(user)).status,403);
+  await app.signup(user);
+  assert.equal((await app.owner(user)).status,200);
 });
 
 test('owners retain isolated state across restarts and bearer-only data reads bind to one existing tenant',async t=>{
@@ -119,6 +129,7 @@ test('owners retain isolated state across restarts and bearer-only data reads bi
   let app = await listen(config);
   t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
   const a = await token('owner-a'), b = await token('owner-b');
+  await app.signup(a); await app.signup(b);
   const stateA = (await app.owner(a)).body;
   const stateB = (await app.owner(b)).body;
   const pathA = new URL(stateA.publicURL).pathname, pathB = new URL(stateB.publicURL).pathname;
@@ -174,6 +185,7 @@ test('hosted configuration requires explicit persistent storage, stable tenant s
     ['AIRPORT_AGENT_BASE','https://agents.example.com/base?secret=x'],['AIRPORT_AGENT_BASE','https://u:p@agents.example.com'],
     ['AIRPORT_TENANT_SECRET','weak'],['AIRPORT_HOSTED_DATA_DIR','relative'],['CF_ACCESS_ISSUER','https://invalid.example.com'],
     ['CF_ACCESS_AUD',''],['COMPOSIO_API_KEY',''],['PORT','99999'],['AIRPORT_AUTH_CONFIGS_JSON','invalid'],
+    ['AIRPORT_SIGNUP_MODE','public'],['AIRPORT_BOOTSTRAP_OWNER_EMAIL','invalid email'],['AIRPORT_BOOTSTRAP_OWNER_TENANT','wrong'],
     ['AIRPORT_COMPOSIO_VERIFIER_PATH','/oauth/done'],['AIRPORT_COMPOSIO_VERIFIER_PATH','/api/state']
   ]) assert.throws(()=>readHostedConfig({...base,[name]:value}));
 });
@@ -201,6 +213,7 @@ test('the optional verifier binds a generic connection to its signed-in tenant a
   const app=await listen(config,{catalog});
   t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
   const a=await token('a'), b=await token('b');
+  await app.signup(a); await app.signup(b);
   const route='/oauth/verify?session_uri=';
   assert.equal((await app.send(ownerHost,route+'right')).status,401);
   assert.equal((await app.owner(b,route+'right')).status,409);
@@ -230,6 +243,7 @@ test('the verifier confirms the Gmail profile and refuses ambiguous attempts bef
   const app=await listen(config,{catalog});
   t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
   const a=await token('a'),b=await token('b'), route='/oauth/verify?session_uri=opaque';
+  await app.signup(a); await app.signup(b);
   await app.owner(a,'/api/connect',{workspace:'work',expectedEmail:'work@example.com'});
   await app.owner(a,'/api/connect',{workspace:'personal',expectedEmail:'personal@example.com'});
   assert.equal((await app.owner(a,route)).status,409);
@@ -238,4 +252,119 @@ test('the verifier confirms the Gmail profile and refuses ambiguous attempts bef
   assert.equal((await app.owner(b,route)).status,303);
   assert.equal(consumed,1);
   assert.equal((await app.owner(b)).body.workspaces.find(w=>w.id==='work').status,'active');
+});
+
+test('only the static welcome page is public on the owner hostname and login returns to the protected portal',async t=>{
+  const dir=mkdtempSync(join(tmpdir(),'airport-public-page-'));
+  const app=await listen(readHostedConfig(env(dir)));
+  t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
+  const landing=await app.send(ownerHost,'/welcome');
+  assert.equal(landing.status,200);
+  assert.equal(landing.headers['cache-control'],'no-store');
+  assert.equal(landing.headers['referrer-policy'],'no-referrer');
+  const csp=landing.headers['content-security-policy'];
+  for(const inline of landing.body.matchAll(/<(?:style|script)>([\s\S]*?)<\/(?:style|script)>/g)) {
+    assert(csp.includes("'sha256-"+createHash('sha256').update(inline[1]).digest('base64')+"'"));
+  }
+  assert.match(csp,/default-src 'none'/);
+  const head=await app.send(ownerHost,'/welcome',{},undefined,'HEAD');
+  assert.equal(head.status,200);
+  assert.equal(head.body,'');
+  for(const path of ['/','/login','/welcome/','/api/account','/app.js','/api/state','/welcome?redirect=https://other.example']) {
+    assert.equal((await app.send(ownerHost,path)).status,401);
+  }
+  assert.equal((await app.send(agentHost,'/welcome')).status,404);
+  const login=await app.owner(await token('id'),'/login');
+  assert.equal(login.status,303);
+  assert.equal(login.headers.location,'/');
+  assert.deepEqual(readdirSync(join(dir,'tenants')),[]);
+});
+
+test('open registration requires verified human identity and explicit signup; public first signer stays a member', async t=>{
+  const dir=mkdtempSync(join(tmpdir(),'airport-signup-'));
+  const config=readHostedConfig({...env(dir),AIRPORT_BOOTSTRAP_OWNER_EMAIL:'owner@example.com'});
+  const app=await listen(config);
+  t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
+  const a=await token('a',{email:'owner@example.com'}), b=await token('b');
+  const first=await app.owner(a,'/api/account');
+  assert.equal(first.status,200);
+  assert.equal(first.body.account,null);
+  assert.equal(first.body.signupMode,'open');
+  assert.deepEqual(readdirSync(join(dir,'tenants')),[]);
+  assert.equal((await app.owner(a,'/app.js')).status,200);
+  assert.equal((await app.owner(a)).body.code,'account_required');
+  assert.equal((await app.send(ownerHost,'/api/account/signup',{
+    'cf-access-jwt-assertion':a,'content-type':'application/json','x-airport-console':'1',origin:'https://other.example'
+  },{displayName:'CSRF'})).status,403);
+  assert.equal((await app.send(ownerHost,'/api/account/signup',{'cf-access-jwt-assertion':a,'content-type':'application/json'},{displayName:'CSRF'})).status,403);
+  const created=await app.owner(a,'/api/account/signup',{
+    displayName:'  First customer  ',role:'admin',tenant:'foreign',email:'other@example.com'
+  });
+  assert.equal(created.status,201);
+  assert.equal(created.body.account.role,'member');
+  assert.equal(created.body.account.email,'owner@example.com');
+  assert.equal(created.body.account.displayName,'First customer');
+  assert.equal((await app.owner(a,'/api/account/signup',{displayName:'again'})).status,409);
+  assert.equal((await app.owner(a,'/api/account/invitations')).status,403);
+  assert.equal((await app.owner(a,'/api/account/profile',{displayName:'   '})).status,400);
+  assert.equal((await app.owner(a,'/api/account/profile',{displayName:'Sam',email:'other@example.com'})).body.account.email,'owner@example.com');
+  assert.equal((await app.owner(a,'/api/account')).body.account.displayName,'Sam');
+  assert.equal((await app.owner(b,'/api/account')).body.account,null);
+  assert.equal((await app.owner(b,'/api/account/profile',{displayName:'Jane'})).status,403);
+  assert.equal((await app.owner(await token('no-email',{email:'',email_verified:true}),'/api/account')).status,401);
+  assert.equal((await app.owner(await token('service',{common_name:'helper'}),'/api/account')).status,401);
+  assert.equal((await app.send(agentHost,'/api/account',{'cf-access-jwt-assertion':a})).status,404);
+});
+
+test('verified legacy and bootstrap identities keep their exact tenant and invite subsequent customers into private accounts',async t=>{
+  const dir=mkdtempSync(join(tmpdir(),'airport-customer-'));
+  const old=env(dir);
+  const name='legacy-subject',ownerEmail='pilot@example.com';
+  const tenantFor=sub=>createHmac('sha256',Buffer.from(old.AIRPORT_TENANT_SECRET,'base64url')).update(JSON.stringify([team,sub])).digest('hex');
+  const tenant=tenantFor(name),memberTenant=tenantFor('existing-member');
+  const config=readHostedConfig({...old,AIRPORT_SIGNUP_MODE:'invite',AIRPORT_BOOTSTRAP_OWNER_EMAIL:ownerEmail,AIRPORT_BOOTSTRAP_OWNER_TENANT:tenant});
+  mkdirSync(join(dir,'tenants'));
+  const previous=createStore(join(dir,'tenants',tenant+'.sqlite3'));
+  const previousGrant=previous.issueAgentGrant('personal','Pilot','forever');previous.createWorkspace('Preexisting data');previous.close();
+  createStore(join(dir,'tenants',memberTenant+'.sqlite3')).close();
+  let app=await listen(config);
+  t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
+  const owner=await token(name,{email:ownerEmail}),member=await token('existing-member');
+  const wrong=await token('wrong',{email:ownerEmail});
+  assert.equal((await app.owner(wrong,'/api/account')).body.account,null);
+  assert.equal((await app.owner(wrong,'/api/account/signup',{displayName:'Wrong identity'})).status,409);
+  assert.equal((await app.owner(owner,'/api/account')).body.account.role,'admin');
+  assert.equal((await app.owner(member,'/api/account')).body.account.role,'member');
+  const ownerState=(await app.owner(owner)).body;
+  assert(ownerState.publicURL.endsWith('/gateway/'+tenant));
+  assert(ownerState.workspaces.some(w=>w.name==='Preexisting data'));
+  assert(!(await app.owner(member)).body.workspaces.some(w=>w.name==='Preexisting data'));
+  assert.deepEqual(readdirSync(join(dir,'tenants')).filter(file=>file.endsWith('.sqlite3')).sort(),[tenant+'.sqlite3',memberTenant+'.sqlite3'].sort());
+  assert.equal((await app.owner(member,'/api/account/invitations',{email:'member@example.com'})).status,403);
+  const invite=(await app.owner(owner,'/api/account/invitations',{email:' New@Example.com '})).body;
+  assert.equal(invite.invitation.email,'new@example.com');assert.equal(invite.invitation.status,'pending');
+  const link=new URL(invite.inviteUrl);assert.equal(link.origin,config.ownerOrigin);assert.equal(link.pathname,'/welcome');
+  const credential=new URLSearchParams(link.hash.slice(1)).get('invite');
+  const visitor=await token('new',{email:'new@example.com'});
+  assert.equal((await app.owner(visitor,'/api/account/signup',{displayName:'New'})).body.code,'invitation_required');
+  assert.equal((await app.owner(await token('other'),'/api/account/signup',{displayName:'Other',token:credential})).body.code,'invitation_invalid');
+  const claims=await Promise.all([1,2].map(()=>app.owner(visitor,'/api/account/signup',{displayName:'New',token:credential})));
+  assert.deepEqual(claims.map(x=>x.status).sort(),[201,409]);
+  assert.equal((await app.owner(visitor,'/api/account')).body.account.role,'member');
+  assert(!(await app.owner(visitor)).body.workspaces.some(w=>w.name==='Preexisting data'));
+  const history=(await app.owner(owner,'/api/account/invitations')).body;
+  assert.equal(history.invitations[0].status,'accepted');
+  assert(!JSON.stringify(history).includes(credential));
+  assert.equal((await app.owner(owner,'/api/account/invitations',{email:'new@example.com'})).status,409);
+  const revoked=(await app.owner(owner,'/api/account/invitations',{email:'revoke@example.com'})).body;
+  assert.equal((await app.owner(owner,'/api/account/invitations/revoke',{id:revoked.invitation.id})).body.invitation.status,'revoked');
+  const rejected=await app.owner(await token('revoke'),'/api/account/signup',{displayName:'R',token:revoked.inviteUrl.split('#invite=')[1]});
+  assert.equal(rejected.body.code,'invitation_invalid');
+  await app.close();
+  app=await listen({...config,signupMode:'open'});
+  assert.equal((await app.owner(owner,'/api/account/invitations')).body.code,'invitations_disabled');
+  const path=new URL(ownerState.publicURL).pathname;
+  const agentReply=await app.send(agentHost,path+'/mcp',{'content-type':'application/json',accept:'application/json, text/event-stream',authorization:'Bearer '+previousGrant.token},
+    {jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'Pilot',version:'1'}}});
+  assert.equal(agentReply.status,200);
 });
