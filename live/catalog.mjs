@@ -104,7 +104,7 @@ export function parseProjectAuthConfigs(raw) {
   return result;
 }
 
-export function createCatalog(apiKey, {authConfigs={},discoverProjectConfigs=false} = {}) {
+export function createCatalog(apiKey, {authConfigs={},pilotGmailConfig=authConfigs.gmail,discoverProjectConfigs=false} = {}) {
   if (typeof apiKey !== 'string' || !apiKey.trim() || /[\r\n]/.test(apiKey)) fail('Set the server-side Composio project key first.');
   async function request(path,body) {
     let response;
@@ -203,7 +203,7 @@ export function createCatalog(apiKey, {authConfigs={},discoverProjectConfigs=fal
     return {accountId:account(link.connected_account_id),url:url.href};
   }
 
-  async function verify({owner,toolkit,accountId}) {
+  async function verify({owner,toolkit,accountId},pilotGmail=false) {
     const key = slug(toolkit).toLowerCase();
     ownerId(owner);
     if (accountId == null) {
@@ -217,7 +217,8 @@ export function createCatalog(apiKey, {authConfigs={},discoverProjectConfigs=fal
     const row = match?.items?.[0];
     if (match?.items?.length !== 1 || row?.id !== accountId || row.toolkit?.slug?.toLowerCase() !== key ||
         (row.user_id !== undefined && row.user_id !== owner) || row.experimental?.account_type === 'SHARED' ||
-        (Object.hasOwn(authConfigs,key) && row.auth_config?.id !== authConfigs[key])) {
+        (Object.hasOwn(authConfigs,key) && row.auth_config?.id !== authConfigs[key]) ||
+        (pilotGmail && pilotGmailConfig && row.auth_config?.id !== pilotGmailConfig)) {
       fail('The connected account could not be verified for this workspace and toolkit.');
     }
     if (row.is_disabled || row.auth_config?.is_disabled) return {active:false,status:'DISABLED'};
@@ -226,18 +227,19 @@ export function createCatalog(apiKey, {authConfigs={},discoverProjectConfigs=fal
   }
 
   async function execute(input) {
-    const allowed = ['owner','toolkit','accountId','slug','args','version','beforeDispatch'];
+    const allowed = ['owner','toolkit','accountId','slug','args','version','beforeDispatch','pilotGmail'];
     if (!object(input) || Object.keys(input).some(key => !allowed.includes(key))) fail('Invalid Composio execution parameters.');
     const {owner,toolkit,accountId,slug:name,args,version:requestedVersion} = input;
     ownerId(owner);
     const key = slug(toolkit).toLowerCase();
+    if(input.pilotGmail!==undefined && (input.pilotGmail!==true || key!=='gmail' || !accountId))fail('Invalid Gmail account binding.');
     if (!object(args)) fail('Tool arguments must be a JSON object.');
     if (input.beforeDispatch !== undefined && typeof input.beforeDispatch !== 'function') fail('Invalid Composio dispatch guard.');
     if (slug(name).toLowerCase() === 'proxy') fail('Use a named catalog tool.');
     const tool = await getTool(name,requestedVersion);
     if (tool.toolkit !== key) fail('This tool belongs to another toolkit.');
     if (!accountId && !tool.noAuth) fail('This tool requires a connected account.');
-    const grant = await verify({owner,toolkit:key,accountId});
+    const grant = await verify({owner,toolkit:key,accountId},input.pilotGmail);
     if (!grant.active) fail('Reconnect the inactive account before using this tool.');
     // Only the dedicated arguments field contains provider-defined inputs.
     // Never merge those inputs into the execution envelope or retry a write.

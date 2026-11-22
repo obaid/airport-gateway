@@ -33,20 +33,34 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       ['GITHUB_DELETE_REPOSITORY','Delete repository','destructiveHint']
     ].map(([slug,name,tag])=>({toolkit:'github',slug,name,description:name,
       tags:[tag],scopes:[],version:'20261101_00',inputSchema:{type:'object',properties:{},additionalProperties:false}}));
+    const gmailTools=[
+      ['GMAIL_GET_MESSAGE','Get message','readOnlyHint'],
+      ['GMAIL_LIST_LABELS','List labels','readOnlyHint'],
+      ['GMAIL_SEND_EMAIL','Send email','createHint']
+    ].map(([slug,name,tag])=>({...githubTools[0],toolkit:'gmail',slug,name,description:name,tags:[tag]}));
     gateway=createHostedGateway(readHostedConfig({
       AIRPORT_OWNER_ORIGIN:origin,AIRPORT_AGENT_BASE:'https://mcp.example.test',
       AIRPORT_HOSTED_DATA_DIR:dir,AIRPORT_TENANT_SECRET:Buffer.alloc(32,10).toString('base64url'),
       AIRPORT_AUTH_MODE:'email',AIRPORT_SIGNUP_MODE:'open',AIRPORT_EMAIL_ACCOUNT_ID:'a'.repeat(32),
       AIRPORT_EMAIL_FROM:'signin@example.test',AIRPORT_EMAIL_API_TOKEN:'fixture',COMPOSIO_API_KEY:'fixture'
     }),{
-      sendCode:async message=>{delivered=message;},provider:{},
+      sendCode:async message=>{delivered=message;},
+      provider:{
+        start:async owner=>({connectionId:'ca_'+owner,url:'https://connect.composio.dev/link/test-gmail'}),
+        verify:async (owner,account)=>{assert.equal(account,'ca_'+owner);return {active:true,status:'ACTIVE',email:'pilot@example.test'};}
+      },
       catalog:{
         listToolkits:async()=>({items:[{slug:'github',name:'GitHub',authSchemes:['OAUTH2']}],nextCursor:null}),
-        listTools:async({toolkit})=>{
+        listTools:async({toolkit,search,cursor,bulk})=>{
+          if(toolkit==='gmail'){
+            const matches=gmailTools.filter(t=>t.name.toLowerCase().includes((search||'').toLowerCase()));
+            const start=Number(cursor||0),limit=bulk?matches.length:2;
+            return {items:matches.slice(start,start+limit),total:matches.length,nextCursor:start+limit<matches.length?String(start+limit):null};
+          }
           assert.equal(toolkit,'github');
           return {items:githubTools,nextCursor:null};
         },
-        getTool:async slug=>githubTools.find(tool=>tool.slug===slug),
+        getTool:async slug=>[...githubTools,...gmailTools].find(tool=>tool.slug===slug),
         start:async({owner,toolkit,callbackURL})=>{
           assert.equal(toolkit,'github');
           const accountId='ca_browser_'+(githubAuthorizations.size+1);
@@ -144,6 +158,44 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       await direct.getByRole('button',{name:'Issue agent credential'}).click();
       await page.getByRole('button',{name:'Done',exact:true}).click();
       assert.equal(await page.locator('.rg-agent').filter({hasText:'Duet'}).locator('.agent-icon-letter').textContent(),'D');
+    });
+    await t.test('an existing inbox-count connection lists and manages the Gmail catalog on its original URL',async ()=>{
+      const owner=async (action,data={})=>{
+        const response=await ctx.request.post(origin+'/api/'+action,{
+          headers:{'x-airport-console':'1'},data:{workspace:'personal',...data}
+        });
+        assert.equal(response.status(),200);
+        return response.json();
+      };
+      await owner('connect',{expectedEmail:'pilot@example.test'});
+      assert.equal((await owner('check')).status,'active');
+      await owner('policy',{policy:'Allow'});
+      const toolsURL=origin+'/#connections/pilot-gmail/tools?workspace=personal';
+      await page.goto(toolsURL);
+      await page.reload();
+      const control=slug=>page.locator('[data-cp-tool="'+slug+'"]');
+      assert.equal(await control('gmail_inbox_counts').inputValue(),'allow');
+      assert.equal(await control('GMAIL_GET_MESSAGE').inputValue(),'block');
+      await page.getByRole('button',{name:'Next',exact:true}).click();
+      assert.equal(await control('GMAIL_SEND_EMAIL').inputValue(),'block');
+      await page.getByRole('searchbox',{name:'Search tools'}).fill('labels');
+      await control('GMAIL_LIST_LABELS').selectOption('allow');
+      await page.getByRole('button',{name:'Save changes'}).click();
+      await page.getByText('1 change saved.',{exact:true}).waitFor();
+      await page.reload();
+      assert.equal(await control('GMAIL_LIST_LABELS').inputValue(),'allow');
+      assert.equal(await control('GMAIL_GET_MESSAGE').inputValue(),'block');
+      assert.equal(await control('gmail_inbox_counts').inputValue(),'allow');
+      assert.equal(page.url(),toolsURL);
+      await page.getByRole('link',{name:'Access presets'}).click();
+      await page.getByRole('button',{name:'Change access'}).click();
+      await page.locator('[data-access-preset="read-only"]').check();
+      await page.getByRole('button',{name:'Apply read only'}).click();
+      await page.getByText(/Read only · 2 catalog tools allowed/).waitFor();
+      await page.getByRole('link',{name:'Tools',exact:true}).click();
+      assert.equal(await control('GMAIL_GET_MESSAGE').inputValue(),'allow');
+      assert.equal(await control('gmail_inbox_counts').inputValue(),'allow');
+      assert.equal(page.url(),toolsURL);
     });
     const workspaceButton=page.locator('#ws-button');
     const workspaceMenu=page.locator('#workspace-menu');

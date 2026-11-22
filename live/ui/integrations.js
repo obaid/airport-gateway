@@ -126,7 +126,7 @@
   function accounts(ctx,slug) {
     const w=ctx.workspace;
     const rows=(ctx.state.connections||[]).filter(c=>c.workspace===w.id&&c.toolkit===slug&&['active','pending'].includes(c.status));
-    if(slug==='gmail'&&['active','pending','mismatch'].includes(w.status))rows.unshift({id:'pilot-gmail',label:w.email||w.expectedEmail||'Gmail inbox',status:w.status});
+    if(slug==='gmail'&&['active','pending','mismatch'].includes(w.status))rows.unshift({...w.gmailCatalog,id:'pilot-gmail',label:w.email||w.expectedEmail||'Gmail inbox',status:w.status});
     return rows;
   }
   async function detail(v,slug) {
@@ -144,7 +144,8 @@
         ${!live?`<p class="int-note">${ctx.state.ready?'Waiting for confirmation from the live catalog.':'Airport’s provider must be configured before connecting an account.'}</p>`:''}</div></section>
         <section class="panel linked-accounts"><div class="panel-head"><h2>Accounts in ${esc(ctx.workspace.name)}</h2></div>
         ${linked.map(c=>{
-          const needsAccess=c.id!=='pilot-gmail'&&!c.accessMode&&!(c.tools||[]).some(t=>t.allowed||t.enabled);
+          const hasInboxCounts=c.id==='pilot-gmail'&&ctx.workspace.policy==='Allow';
+          const needsAccess=!hasInboxCounts&&!c.accessMode&&!(c.tools||[]).some(t=>t.allowed||t.enabled);
           const status=c.status==='active'?(needsAccess?'Connected · Set up access':'Connected'):c.status==='pending'?'Awaiting sign-in':'Address mismatch';
           return `<a class="linked-account" href="#connections/${encodeURIComponent(c.id)}/settings"><span>${esc(c.label||a.name)}</span><span class="int-status">${status}</span>${icon('chevron-right',14)}</a>`;
         }).join('')||'<p class="empty">No accounts connected.</p>'}</section></div>`;

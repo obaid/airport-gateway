@@ -30,7 +30,7 @@ async function loadPlatformCredential() {
   const key=await localPlatformKey(stateDir);
   if(!key)return;
   const next=createComposio(key,gmailConfig);
-  const nextCatalog=createCatalog(key,{authConfigs});
+  const nextCatalog=createCatalog(key,{authConfigs,pilotGmailConfig:gmailConfig});
   provider=next;catalog=nextCatalog;
 }
 await loadPlatformCredential();

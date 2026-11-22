@@ -97,7 +97,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
   // Values for issuer, audience and the key source come exclusively from operator configuration.
   const keys = config.authMode==='access' ? createRemoteJWKSet(new URL('/cdn-cgi/access/certs',config.issuer),fetchKeys ? {[customFetch]:fetchKeys} : {}) : null;
   const gmail = provider || createComposio(config.apiKey,config.gmailConfig);
-  const catalogAPI = catalog || createCatalog(config.apiKey,{authConfigs:config.authConfigs});
+  const catalogAPI = catalog || createCatalog(config.apiKey,{authConfigs:config.authConfigs,pilotGmailConfig:config.gmailConfig});
   const options = {getProvider:()=>gmail,getCatalog:()=>catalogAPI};
   const ownerHost = new URL(config.ownerOrigin).host;
   const agentURL = new URL(config.agentBase);

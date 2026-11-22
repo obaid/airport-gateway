@@ -122,7 +122,7 @@ export function createOwnerHandler({store,requireOwner,ownerOrigin,publicBase,lo
           }
           return json(res,200,{ok:true,status:store.get(ws).status});
         }
-        case '/api/policy':store.setPolicy(ws,b.policy);return json(res,200,{ok:true});
+        case '/api/policy':store.setPolicy(ws,b.policy,b.connectionId);return json(res,200,{ok:true});
         case '/api/disconnect':store.disconnect(ws);return json(res,200,{ok:true});
         case '/api/connector-grant':return json(res,200,store.issueConnectorGrant(ws));
         case '/api/invite':{

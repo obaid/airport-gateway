@@ -156,6 +156,21 @@ test('credentialless tools require both the toolkit and pinned tool to explicitl
   await assert.rejects(api.execute(input),/Connect an account/);
 });
 
+test('catalog calls on the original Gmail account also require its pilot auth configuration',async t=>{
+  const gmailTool={...tool,slug:'GMAIL_GET_THREAD',toolkit:{slug:'gmail'}};
+  const configured={...account,toolkit:{slug:'gmail'},auth_config:{id:'ac_pilot'}};
+  const other={...configured,auth_config:{id:'ac_different'}};
+  const ok={successful:true,data:{items:[]}};
+  const {calls}=mock(t,[gmailTool,{items:[other]},gmailTool,{items:[configured]},ok,gmailTool,{items:[other]},ok]);
+  const api=createCatalog('test-only-project-key',{pilotGmailConfig:'ac_pilot'});
+  const input={...execute,toolkit:'gmail',slug:gmailTool.slug};
+  await assert.rejects(api.execute({...input,pilotGmail:true}),/could not be verified/);
+  assert.equal(calls.filter(c=>c.method==='POST').length,0);
+  assert.deepEqual(await api.execute({...input,pilotGmail:true}),{data:ok.data});
+  assert.deepEqual(await api.execute(input),{data:ok.data});
+  assert(calls.filter(c=>c.method==='POST').every(c=>!Object.hasOwn(c.body,'pilotGmail')));
+});
+
 test('invalid links, credentials, envelope overrides, route names and provider errors remain contained',async t => {
   const {api,calls} = mock(t,[
     {items:[kit]},{session_id:'trs_x'},{connected_account_id:accountId,redirect_url:'https://connect.composio.dev.example.com/link/ln_x'},

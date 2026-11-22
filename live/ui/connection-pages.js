@@ -11,18 +11,19 @@
   };
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const title=v=>String(v??'').replace(/_/g,' ').replace(/^\w/,x=>x.toUpperCase());
-  const appName=c=>c.pilot?'Gmail pilot':window.AirportDiscovery?.apps?.[c.toolkit]?.name||title(c.toolkit);
+  const appName=c=>window.AirportDiscovery?.apps?.[c.toolkit]?.name||(c.toolkit==='gmail'?'Gmail':title(c.toolkit));
   const count=(n,s)=>n+' '+s+(n===1?'':'s');
   const stamp=v=>{const d=new Date(v);return Number.isNaN(d.getTime())?'':d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});};
   const route=(id,tab)=>'#connections/'+encodeURIComponent(id)+'/'+tab;
   const action=(key,text,kind='',disabled=false)=>`<button type="button" data-cp="${esc(key)}" class="button ${kind}" ${disabled?'disabled':''}>${esc(text)}</button>`;
   function live(v){return mounts.get(v.el)===v && v.el.isConnected && v.ctx.isCurrent();}
   function pins(v){return new Map((v.c?.tools||[]).filter(t=>t.allowed||t.enabled).map(t=>[t.slug,t]));}
+  const catalogId=c=>c.pilot?c.connectionId:c.id;
   function listAccounts(v){
     const w=v.ctx.workspace;
     const list=(v.ctx.state.connections||[]).filter(c=>c.workspace===w.id);
     if(w.status && w.status!=='disconnected' || v.ctx.route.id===PILOT)
-      list.unshift({id:PILOT,label:w.email||w.expectedEmail||'Gmail pilot',toolkit:'gmail',status:w.status,pilot:true});
+      list.unshift({...w.gmailCatalog,id:PILOT,label:w.email||w.expectedEmail||'Gmail inbox',toolkit:'gmail',status:w.status,pilot:true});
     return list;
   }
   function accessType(t){
@@ -34,7 +35,7 @@
     return '';
   }
   function begin(el,ctx,mode){
-    const key=JSON.stringify([ctx.workspace.id,mode,ctx.route.id||'',ctx.route.tab||'settings']);
+    const key=JSON.stringify([ctx.workspace.id,mode,ctx.route.id||'',ctx.route.tab||'settings',ctx.route.id===PILOT?ctx.workspace.gmailCatalog?.connectionId:null]);
     let v=mounts.get(el);
     if(v?.key===key){v.ctx=ctx;return v;}
     v={key,el,ctx,mode,search:'',filter:'all',items:[],cursors:[''],index:0,next:null,seq:0,loading:false,
@@ -68,15 +69,15 @@
     }
     if(v.c?.status==='pending' && c?.status!=='pending'){v.notice='';v.feedbackError=false;}
     v.c=c;v.accounts=accounts;v.tab=mode==='policies'?'tools':tabs.includes(ctx.route.tab)?ctx.route.tab:'settings';
-    const draftKey=JSON.stringify([ctx.workspace.id,id]);
+    const draftKey=JSON.stringify([ctx.workspace.id,id,c?.pilot?c.connectionId:null]);
     if(!drafts.has(draftKey))drafts.set(draftKey,new Map());
     v.draft=drafts.get(draftKey);
     // Leave active fields, focus, paging and staged changes intact during background state polling.
     const sig=JSON.stringify([accounts.map(x=>[x.id,x.label,x.status]),c?.tools,c?.accessMode,ctx.workspace.policy,ctx.workspace.email,
       ctx.state.ready,v.tab==='activity'&&ctx.state.logs]);
     if(v.signature!==sig){v.signature=sig;paint(v);}
-    if(c?.status==='active'&&!c.pilot&&v.tab==='settings'&&(!currentMode(v)||v.accessOpen)&&!v.accessPreview&&!v.accessError&&!v.accessLoading&&!v.accessSaving)loadAccess(v);
-    if(c&&v.tab==='tools'&&(!group||group.visible.has(id))&&!c.pilot&&v.filter!=='allowed'&&!v.fetched&&!v.loading&&c.status==='active')load(v);
+    if(c?.status==='active'&&catalogId(c)&&v.tab==='settings'&&(!currentMode(v)||v.accessOpen)&&!v.accessPreview&&!v.accessError&&!v.accessLoading&&!v.accessSaving)loadAccess(v);
+    if(c&&v.tab==='tools'&&(!group||group.visible.has(id))&&catalogId(c)&&v.filter!=='allowed'&&!v.fetched&&!v.loading&&c.status==='active')load(v);
   }
   function identity(v){
     const c=v.c;
@@ -91,8 +92,8 @@
     const editing=v.accessOpen||!mode;
     const message=v.accessMessage?`<p class="cp-access-message" role="status">${esc(v.accessMessage)}</p>`:'';
     const heading=editing?(mode?'Change agent access':'Choose agent access'):'Agent access';
-    const description=editing?`Choose which ${esc(appName(v.c))} tools agents in ${workspace} can use on this account.`:
-      `${esc(accessModes[mode].name)} · ${count(allowed,'tool')} allowed for agents in ${workspace}.`;
+    const description=editing?`Choose which ${v.c.pilot?'Composio ':''}${esc(appName(v.c))} tools agents in ${workspace} can use on this account.${v.c.pilot?' Google’s account permissions also apply.':''}`:
+      `${esc(accessModes[mode].name)} · ${count(allowed,v.c.pilot?'catalog tool':'tool')} allowed for agents in ${workspace}.`;
     const head=`<div class="cp-access-head"><span class="cp-access-mark">${v.ctx.icon('policies',22)}</span><div><h3>${heading}</h3><p>${description}</p></div></div>`;
     if(!editing)return `<section class="cp-panel cp-access" data-access-setup>${head}${message}
       <div class="cp-access-actions">${action('edit-access','Change access','minor')}${toolsLink}</div></section>`;
@@ -129,7 +130,7 @@
     if(v.accessLoading||v.accessSaving)return;
     v.accessLoading=true;v.accessError='';v.accessPreview=null;paint(v);
     try{
-      const preview=await v.ctx.request('connection-access-preview',{workspace:v.ctx.workspace.id,connectionId:v.id});
+      const preview=await v.ctx.request('connection-access-preview',{workspace:v.ctx.workspace.id,connectionId:catalogId(v.c)});
       if(!live(v))return;
       if(!preview.previewId||!preview.presets?.['read-only'])throw new Error('Airport could not confirm the available tools.');
       v.accessPreview=preview;
@@ -142,7 +143,7 @@
     if(!v.accessPreview){if(custom&&v.accessError)v.ctx.navigate(route(v.id,'tools'));return;}
     v.accessSaving=true;v.accessError='';v.accessMessage='';paint(v);
     try{
-      const result=await v.ctx.request('connection-access-apply',{workspace:v.ctx.workspace.id,connectionId:v.id,mode,previewId:v.accessPreview.previewId});
+      const result=await v.ctx.request('connection-access-apply',{workspace:v.ctx.workspace.id,connectionId:catalogId(v.c),mode,previewId:v.accessPreview.previewId});
       if(!live(v))return;
       v.accessPreview=null;
       v.accessMessage=`${accessModes[mode].name} saved. ${count(result.allowed,'tool')} allowed.`;
@@ -163,7 +164,7 @@
   }
   function settings(v){
     const c=v.c,active=c.status==='active',pending=c.status==='pending',gone=!active&&!pending;
-    if(c.pilot)return active?`<section class="cp-panel cp-access" data-pilot-access><div class="cp-access-head"><span class="cp-access-mark">${v.ctx.icon('policies',22)}</span><div><h3>Agent access</h3><p>Gmail pilot supports inbox counts only. Inbox counts are ${v.ctx.workspace.policy==='Allow'?'allowed':'blocked'} in ${esc(v.ctx.workspace.name)}.</p></div></div><div class="cp-access-actions"><a class="button minor" href="${route(v.id,'tools')}">Manage inbox counts</a></div></section>`:'';
+    if(c.pilot)return active?`${catalogId(c)?accessSection(v):''}<section class="cp-panel cp-access" data-pilot-access><div class="cp-access-head"><span class="cp-access-mark">${v.ctx.icon('policies',22)}</span><div><h3>Airport inbox counts</h3><p>The built-in inbox counter is ${v.ctx.workspace.policy==='Allow'?'allowed':'blocked'} in ${esc(v.ctx.workspace.name)}. Manage it separately from the Composio Gmail tools.</p></div></div><div class="cp-access-actions"><a class="button minor" href="${route(v.id,'tools')}">Manage tools</a></div></section>`:'';
     const status={active:'Connected',pending:'Awaiting sign-in',disabled:'Disconnected'}[c.status]||title(c.status);
     const next=gone?`<a class="button primary" href="#integrations?app=${encodeURIComponent(c.toolkit)}">Connect another account</a>`:action('check',v.checking?'Checking…':pending?'Check sign-in':'Check connection','minor',v.checking);
     return `${active?accessSection(v):''}<section class="cp-panel setting-panel"><div class="cp-section-head"><h3>Account settings</h3></div><div class="cp-settings-form">
@@ -174,8 +175,9 @@
   }
   function activity(v){
     const c=v.c,allowedNames=new Set((c.tools||[]).map(t=>t.mcpName));
-    const entries=(v.ctx.state.logs||[]).filter(l=>l.workspace===v.ctx.workspace.id && (c.pilot?
-      ['gmail_inbox_counts','gmail_send_email'].includes(l.tool):l.exchange?.request?.connection?.id===c.id||allowedNames.has(l.tool)));
+    const entries=(v.ctx.state.logs||[]).filter(l=>l.workspace===v.ctx.workspace.id && (
+      (c.pilot&&['gmail_inbox_counts','gmail_send_email'].includes(l.tool))||
+      (catalogId(c)&&l.exchange?.request?.connection?.id===catalogId(c))||allowedNames.has(l.tool)));
     if(!entries.length)return '<section class="cp-panel cp-empty"><h3>No requests yet</h3><p>Requests for this account will appear here.</p></section>';
     const outcomes=[...new Set(entries.map(l=>l.outcome))].sort();
     const q=v.logSearch.trim().toLowerCase(),shown=entries.filter(l=>(!v.decision||l.outcome===v.decision)&&
@@ -188,23 +190,23 @@
         return `<a class="cp-request request-row" href="#activity/${encodeURIComponent(l.id)}"><span><strong>${esc(title(name))}</strong><small>${esc(l.actor)} → ${esc(appName(c))}</small></span><span class="cp-outcome" data-tone="${l.outcome==='Allowed'?'allow':l.outcome==='Blocked'?'block':'neutral'}">${esc(l.outcome)}</span><time>${esc(stamp(l.at))}</time>${v.ctx.icon('chevron-right',15)}</a>`;
       }).join('')||'<p class="cp-empty">No matching requests. Try another search or decision.</p>'}</div></section>`;
   }
-  function pilotRows(v){
-    return [{slug:'gmail_inbox_counts',name:'Get inbox counts',description:'Read total and unread message counts from the connected inbox.',pilot:true,version:'',allowed:v.ctx.workspace.policy==='Allow',tags:['readOnlyHint']},
-      {slug:'gmail_send_email',name:'Send email',description:'Sending is disabled on the Gmail pilot connection.',pilot:true,version:'',allowed:false,unsupportedReason:'Always blocked on this connection.',tags:['writeHint']}];
+  function inboxCounter(v){
+    const slug='gmail_inbox_counts',current=v.ctx.workspace.policy==='Allow',staged=v.draft.get(slug);
+    return {slug,name:'Airport inbox counts',description:'Read the total and unread counts in this inbox.',builtin:true,
+      tags:['readOnlyHint'],latest:'',current,staged,value:staged?.allow??current};
   }
   function listed(v){
     const pinned=pins(v),text=v.search.toLowerCase(),incoming=new Map(v.items.map(t=>[t.slug,t]));
     let rows;
-    if(v.c.pilot)rows=pilotRows(v);
-    else if(v.filter==='allowed' || v.error){
+    if(v.filter==='allowed' || v.error){
       rows=[...pinned.values()].map(p=>incoming.get(p.slug)||{...p,local:true,approvedVersion:p.version});
     }else rows=v.items;
     return rows.map(t=>{
-      const pin=pinned.get(t.slug), current=v.c.pilot?t.allowed:!!pin, latest=t.local?pin?.version:t.version;
+      const pin=pinned.get(t.slug), current=!!pin, latest=t.local?pin?.version:t.version;
       const staged=v.draft.get(t.slug),value=staged?staged.allow:current;
       return {...t,current,latest,pinned:pin?.version,staged,value};
     }).filter(t=>{
-      if((v.c.pilot||v.filter==='allowed'||v.error)&&text && !(t.slug+' '+t.name+' '+(t.description||'')).toLowerCase().includes(text))return false;
+      if((v.filter==='allowed'||v.error)&&text && !(t.slug+' '+t.name+' '+(t.description||'')).toLowerCase().includes(text))return false;
       return v.filter==='allowed'?t.current||t.staged?.allow:v.filter==='blocked'?!t.current||t.staged?.allow===false:true;
     });
   }
@@ -222,11 +224,17 @@
     return `<div class="cp-savebar policy-save"><span role="status">${pending?count(pending,'unsaved change'):'All changes saved'}</span>${action('discard','Discard','minor',!pending||saving)}${action('save',saving?'Saving…':'Save changes','primary',!pending||saving)}</div>`;
   }
   function editor(v){
-    const pending=v.draft.size,rows=listed(v),active=v.c.status==='active',canFetch=!v.c.pilot && active && v.filter!=='allowed';
-    return `${v.group?'':saveBar(pending,v.saveLock)}<section class="cp-panel cp-editor perm-group"><div class="cp-section-head">${v.group?
+    const pending=v.draft.size,rows=listed(v),active=v.c.status==='active',canFetch=catalogId(v.c) && active && v.filter!=='allowed';
+    const allowed=pins(v).size;
+    const scope=v.search?'matching tool':'catalog tool';
+    const totals=Number.isInteger(v.total)&&v.filter==='all'?`${count(v.total,scope)} · ${allowed} allowed`:count(allowed,'allowed tool');
+    const counter=v.c.pilot?`<section class="cp-panel" data-pilot-access>${toolRow(v,inboxCounter(v))}</section>`:'';
+    const actions=v.group?'':saveBar(pending,v.saveLock);
+    if(v.c.pilot&&!catalogId(v.c))return `${actions}${counter}<section class="cp-panel cp-empty"><h3>Composio Gmail tools</h3><p>Verify the Gmail account to manage its catalog tools.</p><a class="button minor" href="${route(v.id,'settings')}">Gmail settings</a></section>`;
+    return `${actions}${counter}<section class="cp-panel cp-editor perm-group"><div class="cp-section-head">${v.group?
       `<div class="cp-bare">${v.ctx.logo(v.c.toolkit,26)}<div><h3>${esc(appName(v.c))}</h3><p>${esc(v.c.label)}</p></div></div><a class="cp-text-link" href="${route(v.c.id,'tools')}">Account tools ${v.ctx.icon('chevron-right',14)}</a>`:
-      `<h3>Tool permissions</h3><span>${count(v.c.pilot?(v.ctx.workspace.policy==='Allow'?1:0):pins(v).size,'allowed tool')}</span>`}</div>
-      ${active&&!v.c.pilot?`<div class="cp-editor-guide"><span>Choose individual tools or apply an access preset.</span><a class="cp-text-link" href="${route(v.id,'settings')}">Access presets ${v.ctx.icon('chevron-right',14)}</a></div>`:''}
+      `<h3>${v.c.pilot?'Composio Gmail tools':'Tool permissions'}</h3><span>${totals}</span>`}</div>
+      ${active?`<div class="cp-editor-guide"><span>${v.c.pilot?'Choose the tools agents can use with this Google account. Google’s permissions also apply.':'Choose individual tools or apply an access preset.'}</span><a class="cp-text-link" href="${route(v.id,'settings')}">Access presets ${v.ctx.icon('chevron-right',14)}</a></div>`:''}
       <div class="cp-toolbar"><form data-cp-search role="search"><span aria-hidden="true">${v.ctx.icon('search',17)}</span><input data-cp-query aria-label="Search tools" name="search" type="search" placeholder="Search tools" value="${esc(v.input??v.search)}" maxlength="200"></form>
       <label><span class="cp-sr">Filter by access</span><select data-cp-filter>${[['all','All tools'],['allowed','Allowed'],['blocked','Blocked']].map(([k,n])=>`<option value="${k}" ${k===v.filter?'selected':''}>${n}</option>`).join('')}</select></label></div>
       ${v.error?`<div class="cp-warning" role="alert">${esc(v.error)} ${action('retry','Retry','minor')}<small>Existing permissions can still be blocked.</small></div>`:''}
@@ -248,25 +256,25 @@
   function setSearch(v,text){
     if(v.search===text)return;
     v.search=text;v.input=text;v.index=0;v.cursors=[''];v.next=null;v.error='';
-    if(!v.c.pilot && v.filter!=='allowed' && v.c.status==='active')load(v);else paint(v);
+    if(catalogId(v.c) && v.filter!=='allowed' && v.c.status==='active')load(v);else paint(v);
   }
   async function load(v){
-    const seq=++v.seq,workspace=v.ctx.workspace.id,connectionId=v.c.id;
-    v.loading=true;v.fetched=true;v.error='';v.items=[];paint(v);
+    const seq=++v.seq,workspace=v.ctx.workspace.id,connectionId=catalogId(v.c);
+    v.loading=true;v.fetched=true;v.error='';v.items=[];v.total=null;v.next=null;paint(v);
     try{
       const result=await v.ctx.request('connection-tools',{workspace,connectionId,search:v.search||undefined,cursor:v.cursors[v.index]||undefined});
-      if(!live(v)||seq!==v.seq||v.id!==connectionId)return;
-      v.items=Array.isArray(result.items)?result.items:[];v.next=result.nextCursor||null;
+      if(!live(v)||seq!==v.seq||catalogId(v.c)!==connectionId)return;
+      v.items=Array.isArray(result.items)?result.items:[];v.next=result.nextCursor||null;v.total=result.total;
     }catch(e){if(!live(v)||seq!==v.seq)return;v.error=e.message||'Could not load the tool catalog.';v.next=null;}
     finally{if(live(v)&&seq===v.seq){v.loading=false;paint(v);}}
   }
   function stage(v,slug,upgrade=false){
     if(v.saveLock||v.group?.saving)return;
-    const row=listed(v).find(t=>t.slug===slug);if(!row)return;
+    const row=v.c.pilot&&slug==='gmail_inbox_counts'?inboxCounter(v):listed(v).find(t=>t.slug===slug);if(!row)return;
     const allow=upgrade||!row.value;
     if(row.staged && !upgrade && allow===row.current){v.draft.delete(slug);v.notice='';paint(v);return;}
     if(allow && (row.unsupportedReason || v.c.status!=='active'))return;
-    if(allow===row.current && (!upgrade || !allow || row.latest===row.pinned || v.c.pilot))v.draft.delete(slug);
+    if(allow===row.current && (!upgrade || !allow || row.latest===row.pinned || row.builtin))v.draft.delete(slug);
     else v.draft.set(slug,{allow,version:allow?row.latest:row.pinned,name:row.name||slug});
     v.notice='';paint(v);
   }
@@ -276,8 +284,8 @@
     for(const [slug,change] of [...draft]){
       if(!live(v)||v.id!==connectionId)break;
       try{
-        if(v.c.pilot)await v.ctx.request('policy',{workspace,policy:change.allow?'Allow':'Block'});
-        else await v.ctx.request('tool-access',{workspace,connectionId,slug,version:change.version,allow:change.allow});
+        if(v.c.pilot&&slug==='gmail_inbox_counts')await v.ctx.request('policy',{workspace,connectionId:catalogId(v.c),policy:change.allow?'Allow':'Block'});
+        else await v.ctx.request('tool-access',{workspace,connectionId:catalogId(v.c),slug,version:change.version,allow:change.allow});
         if(draft.get(slug)===change)draft.delete(slug);
         done++;
       }catch(e){change.error=e.message||'This change could not be saved.';error=change.error;failed++;}
@@ -307,7 +315,7 @@
     if(e.target.matches('[data-cp-tool]'))stage(v,e.target.dataset.cpTool);
     if(e.target.matches('[data-cp-filter]')){
       v.filter=e.target.value;v.seq++;v.loading=false;v.index=0;v.cursors=[''];v.next=null;v.error='';
-      if(v.filter==='allowed'||v.c.pilot||v.c.status!=='active')paint(v);else load(v);
+      if(v.filter==='allowed'||!catalogId(v.c)||v.c.status!=='active')paint(v);else load(v);
     }
   }
   async function click(v,e){
@@ -394,7 +402,7 @@
         for(const e of entries)if(e.isIntersecting){
           g.observer.unobserve(e.target);
           const v=mounts.get(e.target);if(!v)continue;
-          g.visible.add(v.id);if(v.c.status==='active'&&!v.c.pilot&&!v.fetched&&v.filter!=='allowed')load(v);
+          g.visible.add(v.id);if(v.c.status==='active'&&catalogId(v.c)&&!v.fetched&&v.filter!=='allowed')load(v);
         }
       },{rootMargin:'180px'});
     }

@@ -125,6 +125,12 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
         UPDATE catalog_connections SET accessMode='custom' WHERE EXISTS
           (SELECT 1 FROM catalog_tool_policies WHERE connection=catalog_connections.id)`);
     }
+    if (!db.prepare('PRAGMA table_info(catalog_connections)').all().some(c=>c.name==='pilot')) {
+      db.exec(`ALTER TABLE catalog_connections ADD COLUMN pilot INTEGER NOT NULL DEFAULT 0 CHECK(pilot IN (0,1));
+        CREATE UNIQUE INDEX pilot_catalog_workspace ON catalog_connections(workspace) WHERE pilot=1`);
+      const verified=db.prepare("SELECT * FROM workspaces WHERE status='active' AND account IS NOT NULL AND owner IS NOT NULL AND email IS NOT NULL").all();
+      for(const row of verified)bindPilotCatalog(row);
+    }
   });
   // A process interruption leaves an honest record of the attempted lookup.
   const recover = () => transaction(() => {
@@ -143,10 +149,20 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     db.exec('BEGIN IMMEDIATE');
     try {const value=f();db.exec('COMMIT');return value;} catch(e){db.exec('ROLLBACK');throw e;}
   }
+  // The backing ID belongs to this verified sign-in. A replacement account
+  // gets a fresh ID and starts with zero catalog tool approvals.
+  function bindPilotCatalog(row) {
+    db.prepare(`INSERT INTO catalog_connections(id,workspace,toolkit,label,owner,account,status,at,pilot)
+      VALUES(?,?,'gmail',?,?,?,'active',?,1)`).run(randomUUID(),row.id,row.email,row.owner,row.account,now());
+  }
+  function pilotCatalog(ws) {
+    const row=db.prepare('SELECT id,accessMode FROM catalog_connections WHERE workspace=? AND pilot=1').get(ws);
+    return row ? {connectionId:row.id,accessMode:row.accessMode,tools:listToolPolicies(ws,row.id)} : null;
+  }
   const hasSource = ws => {
     const pilot = get(ws);
     return (pilot.status==='active' && !!pilot.account && !!pilot.email) ||
-      !!db.prepare("SELECT 1 FROM catalog_connections WHERE workspace=? AND status='active' LIMIT 1").get(ws);
+      !!db.prepare("SELECT 1 FROM catalog_connections WHERE workspace=? AND status='active' AND pilot=0 LIMIT 1").get(ws);
   };
   function createWorkspace(name) {
     const id = 'ws_'+randomUUID();
@@ -181,6 +197,7 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
   }
   function activateConnection(ws,id,account) {
     const c=getConnection(ws,id);
+    if(c.pilot)fail('Manage this Gmail sign-in from its Gmail settings.',409);
     if (c.status==='disabled' || c.account!==(account??null)) fail('This connection attempt has changed.',409);
     const change=db.prepare("UPDATE catalog_connections SET status='active' WHERE id=? AND workspace=? AND status IN ('pending','active') AND account IS ?")
       .run(id,ws,account??null);
@@ -189,7 +206,7 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
   }
   function disableConnection(ws,id) {
     return transaction(()=>{
-      getConnection(ws,id);
+      if(getConnection(ws,id).pilot)fail('Manage this Gmail sign-in from its Gmail settings.',409);
       db.prepare("UPDATE catalog_connections SET status='disabled' WHERE id=?").run(id);
       db.prepare('DELETE FROM catalog_tool_policies WHERE connection=?').run(id);
       if (!hasSource(ws)) revoke(ws);
@@ -210,7 +227,7 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
   }
   function listConnections(ws) {
     get(ws);
-    return db.prepare('SELECT id,workspace,toolkit,label,status,accessMode FROM catalog_connections WHERE workspace=? ORDER BY at,id').all(ws)
+    return db.prepare('SELECT id,workspace,toolkit,label,status,accessMode FROM catalog_connections WHERE workspace=? AND pilot=0 ORDER BY at,id').all(ws)
       .map(c=>({...c,tools:listToolPolicies(ws,c.id)}));
   }
   const setAccessMode=db.prepare('UPDATE catalog_connections SET accessMode=?,appliedPreview=?,accessRevision=accessRevision+1 WHERE id=?');
@@ -259,8 +276,10 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       return {ok:true,mode,allowed:listToolPolicies(ws,id).length};
     });
   }
-  const approvedSQL=`SELECT t.*,c.toolkit,c.label,c.owner,c.account,c.workspace FROM catalog_tool_policies t
-    JOIN catalog_connections c ON c.id=t.connection WHERE c.workspace=? AND c.status='active'`;
+  const approvedSQL=`SELECT t.*,c.toolkit,c.label,c.owner,c.account,c.workspace,c.pilot FROM catalog_tool_policies t
+    JOIN catalog_connections c ON c.id=t.connection WHERE c.workspace=? AND c.status='active'
+    AND (c.pilot=0 OR EXISTS (SELECT 1 FROM workspaces w WHERE w.id=c.workspace AND w.status='active'
+      AND w.owner=c.owner AND w.account=c.account AND w.email=c.label))`;
   function unpackTool(row) {
     if (!row) return null;
     const {schemaJson,tagsJson,...fields}=row;
@@ -341,6 +360,7 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
         return false;
       }
       db.prepare("UPDATE workspaces SET email=?,status='active' WHERE id=?").run(email,ws);
+      bindPilotCatalog({...row,email});
       return true;
     });
   }
@@ -443,7 +463,8 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     connections:db.prepare('SELECT id FROM workspaces').all().flatMap(w=>listConnections(w.id)),
     agentGrants:db.prepare('SELECT id FROM workspaces').all().flatMap(w=>listAgentGrants(w.id)),
     workspaces:db.prepare('SELECT * FROM workspaces ORDER BY id').all().map(r=>({
-      id:r.id,name:r.name,status:r.status,email:r.email,expectedEmail:r.expected,policy:r.policy,grant:validGrant(r),invitation:invitation(r.id)
+      id:r.id,name:r.name,status:r.status,email:r.email,expectedEmail:r.expected,policy:r.policy,grant:validGrant(r),invitation:invitation(r.id),
+      gmailCatalog:pilotCatalog(r.id)
     })),
     invites:db.prepare("SELECT id,ws AS workspace,at FROM pairings WHERE stage='waiting' AND tries<5 AND expires>? ORDER BY at DESC").all(now()).map(r=>({...r,at:iso(r.at)})),
     logs:db.prepare(`SELECT r.*,c.clientType,x.channel,x.request_json,x.response_json FROM requests r
@@ -460,7 +481,15 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     issueAgentGrant,revokeAgentGrant,listAgentGrants,canUseCatalog,isGrantActive,...enrollment,
     get,state,begin,activate,issue,issueConnectorGrant,pairStart,pairToken,approve,revoke,recover,log,finish,close:()=>db.close(),
     getPolicy(ws){return get(ws).policy;},
-    setPolicy(ws,policy){get(ws);if(!['Allow','Block'].includes(policy))fail('Unknown Gmail read policy.');db.prepare('UPDATE workspaces SET policy=? WHERE id=?').run(policy,ws);},
+    setPolicy(ws,policy,connectionId){
+      get(ws);
+      if(!['Allow','Block'].includes(policy))fail('Unknown Gmail read policy.');
+      if(connectionId===undefined){db.prepare('UPDATE workspaces SET policy=? WHERE id=?').run(policy,ws);return;}
+      if(typeof connectionId!=='string' || !db.prepare(`UPDATE workspaces SET policy=? WHERE id=? AND status='active'
+        AND EXISTS (SELECT 1 FROM catalog_connections c WHERE c.id=? AND c.workspace=workspaces.id AND c.pilot=1
+          AND c.owner=workspaces.owner AND c.account=workspaces.account)`).run(policy,ws,connectionId).changes)
+        fail('The Gmail connection changed. Refresh its permissions before saving.',409);
+    },
     attach(ws,attempt,account){
       return transaction(()=>{
         if(db.prepare('SELECT 1 FROM catalog_connections WHERE account=?').get(account) ||
@@ -470,7 +499,10 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       });
     },
     cancel(ws,attempt,status='disconnected'){db.prepare("UPDATE workspaces SET status=?,owner=NULL,attempt=NULL,account=NULL,email=NULL WHERE id=? AND attempt=? AND status='pending'").run(status,ws,attempt);},
-    disconnect(ws){transaction(()=>{revoke(ws);db.prepare("UPDATE workspaces SET owner=NULL,expected=NULL,email=NULL,account=NULL,attempt=NULL,status='disconnected',policy='Block' WHERE id=?").run(ws);
+    disconnect(ws){transaction(()=>{revoke(ws);
+      db.prepare('DELETE FROM catalog_tool_policies WHERE connection IN (SELECT id FROM catalog_connections WHERE workspace=? AND pilot=1)').run(ws);
+      db.prepare('DELETE FROM catalog_connections WHERE workspace=? AND pilot=1').run(ws);
+      db.prepare("UPDATE workspaces SET owner=NULL,expected=NULL,email=NULL,account=NULL,attempt=NULL,status='disconnected',policy='Block' WHERE id=?").run(ws);
     });},
     authenticate(token){
       const digest=hash(token);

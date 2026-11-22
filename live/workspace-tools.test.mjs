@@ -4,9 +4,11 @@ import { mkdtempSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
+import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { catalogToolRestriction, createStore } from './store.mjs';
 import { createToolRunner, makeAgentHandler } from './agent.mjs';
+import { createCatalogActions } from './owner-catalog.mjs';
 
 const tool = {
   toolkit:'notion',slug:'NOTION_LIST_PAGES',version:'20261110_00',name:'List pages',
@@ -261,4 +263,72 @@ test('an explicit catalog Gmail send permission is scoped to named agents, that 
   assert.equal(dispatches,1);
   assert.deepEqual((await rpc(legacy.token,'tools/call',{name:'gmail_inbox_counts'})).structuredContent,{total:4,unread:1});
   assert(!JSON.stringify(s.state().logs).includes(args.body));
+});
+
+test('verified legacy Gmail migrates with zero catalog grants, and approvals stay with that sign-in',async t=>{
+  const dir=mkdtempSync(join(tmpdir(),'airport-gmail-'));
+  const file=join(dir,'tenant.sqlite3'),ws='personal',email='owner@example.test';
+  let s=createStore(file);
+  t.after(()=>{s.close();rmSync(dir,{recursive:true,force:true});});
+  const activate=(account)=>{
+    const op=s.begin(ws,email);
+    s.attach(ws,op.attempt,account);
+    s.activate(ws,op.attempt,email);
+    return op.owner;
+  };
+  const owner=activate('ca_original'),legacy=s.issueConnectorGrant(ws),agent=s.issueAgentGrant(ws,'Desk');
+  s.setPolicy(ws,'Allow');
+  s.close();
+  const previous=new DatabaseSync(file);
+  previous.exec('DELETE FROM catalog_connections WHERE pilot=1; DROP INDEX pilot_catalog_workspace; ALTER TABLE catalog_connections DROP COLUMN pilot');
+  previous.close();
+  s=createStore(file);
+  const state=()=>s.state().workspaces.find(w=>w.id===ws);
+  const {connectionId}=state().gmailCatalog;
+  assert.deepEqual(state().gmailCatalog,{connectionId,tools:[],accessMode:null});
+  assert.deepEqual(s.listConnections(ws),[]);
+  assert.equal(s.state().workspaces.find(w=>w.id==='work').gmailCatalog,null);
+  const read={...tool,toolkit:'gmail',slug:'GMAIL_GET_THREAD',name:'Read thread',tags:['readOnlyHint']};
+  const named=s.authenticate(agent.token),muse=s.authenticate(legacy.token);
+  let beforeDispatch=()=>{},dispatched=0;
+  const catalog={
+    listTools:async ({toolkit})=>{assert.equal(toolkit,'gmail');return {items:[read],total:1,nextCursor:null};},
+    getTool:async slug=>{assert.equal(slug,read.slug);return read;},
+    execute:async input=>{
+      assert.equal(input.owner,owner);assert.equal(input.accountId,'ca_original');assert.equal(input.pilotGmail,true);
+      beforeDispatch();
+      input.beforeDispatch(read);dispatched++;
+      return {data:{items:[]}};
+    }
+  };
+  const actions=createCatalogActions({store:s,getCatalog:()=>catalog});
+  const call=(action,params={})=>actions.get(action)({workspace:ws,connectionId,...params});
+  const run=createToolRunner({store:s,getProvider:()=>null,getCatalog:()=>catalog});
+  const inventory=async()=>(await run(named,'airport_list_connections',{channel:'mcp',request:{},render:r=>r.data})).data.connections;
+  assert.equal((await call('connection-tools')).items[0].allowed,false);
+  assert.equal(s.approvedTools(ws).length,0);
+  assert.deepEqual(await inventory(),[{label:'Gmail inbox',toolkit:'gmail',allowedToolCount:1}]);
+  const {previewId}=await call('connection-access-preview');
+  await call('connection-access-apply',{previewId,mode:'read-only'});
+  const pin=state().gmailCatalog.tools[0];
+  assert.equal((await run(muse,pin.mcpName,undefined,{query:'test'})).outcome,'Blocked');
+  assert.equal((await run(named,pin.mcpName,undefined,{query:'test'})).outcome,'Allowed');
+  assert.equal(dispatched,1);
+  assert.deepEqual(await inventory(),[{label:'Gmail inbox',toolkit:'gmail',allowedToolCount:2}]);
+  s.setPolicy(ws,'Block',connectionId);
+  assert.equal((await inventory())[0].allowedToolCount,1);
+  assert.equal((await run(muse,'gmail_inbox_counts')).outcome,'Blocked');
+  assert.throws(()=>call('connection-check'),{status:409});
+  assert.throws(()=>call('connection-remove'),{status:409});
+  await assert.rejects(call('tool-access',{workspace:'work',slug:read.slug,allow:true}),{status:404});
+  beforeDispatch=()=>{s.disconnect(ws);activate('ca_replacement');};
+  assert.equal((await run(named,pin.mcpName,undefined,{query:'test'})).outcome,'Blocked');
+  assert.equal(dispatched,1);
+  assert.deepEqual(await inventory(),[{label:'Gmail inbox',toolkit:'gmail',allowedToolCount:0}]);
+  assert.notEqual(state().gmailCatalog.connectionId,connectionId);
+  assert.throws(()=>s.setPolicy(ws,'Allow',connectionId),{status:409});
+  assert.equal(s.getPolicy(ws),'Block');
+  assert.equal(s.resolveTool(ws,pin.mcpName),null);
+  await assert.rejects(call('connection-access-apply',{previewId,mode:'read-only'}),{status:404});
+  assert.equal(s.authenticate(legacy.token),null);
 });

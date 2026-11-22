@@ -73,6 +73,7 @@ export function createCatalogActions({store,getCatalog,callbackURL}) {
   }
   function check(b) {
     const c=conn(b);
+    if(c.pilot)fail('Manage this Gmail sign-in from its Gmail settings.',409);
     if(b.pendingOnly===true && (c.status!=='pending' || !c.accountId))return {status:c.status};
     if(c.status==='disabled')fail('This connection has been disconnected.',409);
     // The provider return and the original console can arrive together.

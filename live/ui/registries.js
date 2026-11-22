@@ -32,12 +32,14 @@
     const {workspace:w,escape:esc,icon}=ctx;
     const list=scoped(ctx.state.connections,ctx);
     if(['active','pending','mismatch'].includes(w.status))
-      list.unshift({id:'pilot-gmail',toolkit:'gmail',label:w.email||w.expectedEmail||'Gmail inbox',status:w.status,pilot:true});
+      list.unshift({...w.gmailCatalog,id:'pilot-gmail',toolkit:'gmail',label:w.email||w.expectedEmail||'Gmail inbox',status:w.status,pilot:true});
     function row(c) {
-      const allowed=c.pilot?(w.policy==='Allow'?1:0):(c.tools||[]).filter(t=>t.allowed||t.enabled).length;
-      const count=logs.filter(log=>c.pilot?['gmail_inbox_counts','gmail_send_email'].includes(log.tool):log.exchange?.request?.connection?.id===c.id).length;
+      const allowed=(c.tools||[]).filter(t=>t.allowed||t.enabled).length+(c.pilot&&w.policy==='Allow'?1:0);
+      const connectionId=c.pilot?c.connectionId:c.id;
+      const count=logs.filter(log=>(c.pilot&&['gmail_inbox_counts','gmail_send_email'].includes(log.tool))||
+        (connectionId&&log.exchange?.request?.connection?.id===connectionId)).length;
       const state={active:'Connected',pending:'Awaiting sign-in',disabled:'Disconnected',mismatch:'Address mismatch'}[c.status]||'Unverified';
-      const needsAccess=c.status==='active'&&!c.pilot&&!allowed&&!c.accessMode;
+      const needsAccess=c.status==='active'&&connectionId&&!allowed&&!c.accessMode;
       const mode={'read-only':'Read only','write-only':'Write only','read-write':'Read and write',custom:'Custom'}[c.accessMode];
       const meta=c.status==='active' ? `<strong${needsAccess?' class="rg-setup"':''}>${needsAccess?'Set up agent access':mode||'Connected'}</strong><small>${needsAccess?'Connected · 0 tools':allowed+' tool'+(allowed===1?'':'s')+' allowed'}</small>` : `<strong>${esc(state)}</strong><small>Account status</small>`;
       const label=c.label||toolkitName(c.toolkit), path='#connections/'+enc(c.id)+'/settings';

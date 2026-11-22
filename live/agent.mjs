@@ -205,6 +205,7 @@ async function runCatalogTool(store,getCatalog,grant,tool,transport,args) {
     // The adapter resolves this exact version and verifies account ownership.
     // It calls beforeDispatch after all awaits and immediately before tool execution.
     const response=await provider.execute({owner:policy.owner,accountId:policy.account,toolkit:policy.toolkit,
+      ...(policy.pilot && {pilotGmail:true}),
       slug:policy.slug,version:policy.version,args,beforeDispatch:metadata=>{
         if (!current() || metadata?.slug!==policy.slug || metadata?.version!==policy.version ||
           metadata?.toolkit!==policy.toolkit || catalogToolRestriction(metadata) || !matchesAccessMode(policy.presetClass,metadata) ||
@@ -250,14 +251,16 @@ function listAgentConnections(store, grant, transport) {
   if (store.canUseCatalog(grant)) {
     const pilot = store.get(workspace);
     const counts = new Map();
+    let pilotToolCount = pilot.policy === 'Allow' ? 1 : 0;
     for (const tool of approvedCatalogTools(store, workspace)) {
-      counts.set(tool.connection, (counts.get(tool.connection) || 0) + 1);
+      if(tool.pilot)pilotToolCount++;
+      else counts.set(tool.connection, (counts.get(tool.connection) || 0) + 1);
     }
     const connections = store.listConnections(workspace)
       .filter(c => c.status === 'active')
       .map(c => ({ label: c.label, toolkit: c.toolkit, allowedToolCount: counts.get(c.id) || 0 }));
     if (pilotConnected(pilot)) {
-      connections.unshift({ label: 'Gmail inbox', toolkit: 'gmail', allowedToolCount: pilot.policy === 'Allow' ? 1 : 0 });
+      connections.unshift({ label: 'Gmail inbox', toolkit: 'gmail', allowedToolCount: pilotToolCount });
     }
     result = { outcome: 'Allowed', data: {workspace: pilot.name, connections}, detail: 'Listed connected apps and their allowed tool counts.' };
   } else {
