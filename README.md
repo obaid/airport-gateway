@@ -15,6 +15,8 @@ For an always-on deployment, start the hosted entry point with `npm start --pref
 
 For development on a Mac, the local entry point uses a one-use owner launcher and an optional tunnel to reach the agent endpoint. [Local setup and workspace controls](live/README.md)
 
+To move existing accounts, policies, activity, and agent grants to a hosted owner, use the SQLite export and import utility during cutover. [Mac-to-host migration](live/MIGRATION.md)
+
 ## Repository layout
 
 - `live/` contains the Node server, Composio adapters, workspace policy checks, storage and tests.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -62,6 +62,38 @@ async function listen(config,overrides={}) {
   const close = () => new Promise(resolve => server.close(resolve));
   return {send,owner,close};
 }
+
+test('Render readiness checks tenant storage without creating a tenant or exposing an owner route',async t=>{
+  const dir = mkdtempSync(join(tmpdir(),'airport-readiness-'));
+  const app = await listen(readHostedConfig(env(dir)));
+  t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
+  for (const host of ['deployment.example.net', ownerHost, agentHost]) {
+    const check = await app.send(host,'/healthz');
+    assert.equal(check.status,204);
+    assert.equal(check.body,'');
+    assert.equal(check.headers['cache-control'],'no-store');
+  }
+  assert.equal((await app.send('deployment.example.net','/api/state')).status,404);
+  assert.equal((await app.send(ownerHost,'/api/state')).status,401);
+  assert.equal((await app.send(ownerHost,'/healthz',{},{})).status,401);
+  assert.deepEqual(readdirSync(join(dir,'tenants')),[]);
+  renameSync(join(dir,'tenants'),join(dir,'offline'));
+  const offline = await app.send('deployment.example.net','/healthz');
+  assert.equal(offline.status,503);
+  assert.equal(offline.body,'');
+});
+
+test('maintenance keeps the volume online and stops both owner and agent traffic',async t=>{
+  const dir = mkdtempSync(join(tmpdir(),'airport-maintenance-'));
+  const config = {...env(dir),AIRPORT_MAINTENANCE:'1'};
+  assert.throws(()=>readHostedConfig({...config,AIRPORT_MAINTENANCE:'yes'}),/AIRPORT_MAINTENANCE/);
+  const app = await listen(readHostedConfig(config));
+  t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
+  assert.equal((await app.send(ownerHost,'/healthz')).status,204);
+  assert.equal((await app.send(ownerHost,'/api/state')).status,503);
+  assert.equal((await app.send(agentHost,'/gateway/'+'a'.repeat(64)+'/mcp',{},{})).status,503);
+  assert.deepEqual(readdirSync(join(dir,'tenants')),[]);
+});
 
 test('owner access verifies the signature, issuer, audience, application-token type, subject and time before opening any SQLite file',async t=>{
   const dir = mkdtempSync(join(tmpdir(),'airport-access-'));

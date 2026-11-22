@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
-import { chmodSync, lstatSync, mkdirSync } from 'node:fs';
+import { chmodSync, constants, lstatSync, mkdirSync } from 'node:fs';
+import { access } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -44,11 +45,13 @@ export function readHostedConfig(env = process.env) {
   if (verifierPath && (!/^\/oauth\/[\w-]+$/.test(verifierPath) || verifierPath==='/oauth/done')) throw Error('Invalid AIRPORT_COMPOSIO_VERIFIER_PATH.');
   const port = Number(env.PORT ?? 8080);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error('Invalid listening PORT.');
+  const maintenance = env.AIRPORT_MAINTENANCE ?? '0';
+  if (!['0','1'].includes(maintenance)) throw Error('Set AIRPORT_MAINTENANCE to 0 or 1.');
   return {
     ownerOrigin:owner.origin,agentBase:agent.href.replace(/\/$/,''),
     issuer:issuer.origin,audience:env.CF_ACCESS_AUD.trim(),secret,dataDir:env.AIRPORT_HOSTED_DATA_DIR,
     apiKey:env.COMPOSIO_API_KEY.trim(),gmailConfig:authConfigs.gmail || env.COMPOSIO_GMAIL_AUTH_CONFIG_ID?.trim() || undefined,authConfigs,verifierPath,
-    host:env.HOST || '127.0.0.1',port
+    host:env.HOST || '127.0.0.1',port,maintenance:maintenance === '1'
   };
 }
 
@@ -157,6 +160,17 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
     try {
       const target = req.url || '/';
       const host = req.headers.host;
+      // The platform may probe with its own hostname before custom domains are ready.
+      if (target === '/healthz' && req.method === 'GET') {
+        try {
+          await access(dir,constants.R_OK | constants.W_OK | constants.X_OK);
+          res.writeHead(204,{'Cache-Control':'no-store'}).end();
+        } catch {
+          res.writeHead(503,{'Cache-Control':'no-store'}).end();
+        }
+        return;
+      }
+      if (config.maintenance) return errorResponse(res,503,'Airport is undergoing maintenance.');
       if (!target.startsWith('/') || target.startsWith('//') || target.includes('\\')) return errorResponse(res,404);
       if (host === agentURL.host && target.startsWith(agentPrefix)) {
         const match = /^([0-9a-f]{64})(\/[^?]*)$/.exec(target.slice(agentPrefix.length));

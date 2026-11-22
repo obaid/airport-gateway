@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: airport-gateway
+    runtime: node
+    plan: 0.5c-512mb
+    numInstances: 1
+    buildCommand: npm ci --prefix live
+    startCommand: node live/hosted.mjs
+    healthCheckPath: /healthz
+    disk:
+      name: airport-data
+      mountPath: /var/data/airport
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "24.22.3"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: AIRPORT_HOSTED_DATA_DIR
+        value: /var/data/airport
+      - key: AIRPORT_OWNER_ORIGIN
+        sync: false
+      - key: AIRPORT_AGENT_BASE
+        sync: false
+      - key: CF_ACCESS_ISSUER
+        sync: false
+      - key: CF_ACCESS_AUD
+        sync: false
+      - key: AIRPORT_TENANT_SECRET
+        sync: false
+      - key: COMPOSIO_API_KEY
+        sync: false

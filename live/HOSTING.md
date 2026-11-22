@@ -2,6 +2,18 @@
 
 Run one Node service behind an HTTPS reverse proxy, with a dedicated owner origin and a permanent volume. The hosted service signs owners in through Cloudflare Access, gives each owner separate SQLite state, and publishes a workspace agent endpoint after the owner authorizes it. Bring the repository's `live/` and sibling `dist/` directories together. The server serves the owner UI, fonts, icons and toolkit directory from those directories.
 
+## Deploy on Render
+
+The [Render Blueprint](../render.yaml) runs one paid Node.js web service with a 1 GB disk at `/var/data/airport`. The service runs independently of the operator's computer. A disk-backed instance briefly stops serving traffic during a redeploy. Review the selected region and recurring charges before applying the Blueprint. [Render pricing](https://render.com/pricing) · [Persistent disk behavior](https://render.com/docs/disks)
+
+1. Choose separate owner and agent hostnames, for example `app.example.com` and `mcp.example.com`. Configure Cloudflare Access for the owner hostname as described below. An allowlist with a single owner is sufficient for a personal installation.
+2. In the Render Dashboard, choose **New → Blueprint**, select the gateway repository and branch, and use the root `render.yaml`. For a private repository, authorize Render's GitHub app for that repository. The Blueprint runs `npm ci --prefix live` from the repository root so the server can access its sibling `dist/` assets. To validate the plan from a signed-in CLI, run `render blueprints validate render.yaml`. [Blueprint setup](https://render.com/docs/infrastructure-as-code) · [Git provider access](https://render.com/docs/git-provider)
+3. Enter the owner origin, agent base, Access issuer, Access audience, stable tenant secret, and Composio project key in the Blueprint's environment prompts. Generate the tenant secret once using the instructions under **Runtime and persistent storage** and keep a recovery copy. Use the existing Composio project if bringing over accounts connected through that project.
+4. Add both hostnames to the new service under **Settings → Custom Domains**. At the authoritative DNS provider, create a CNAME for each hostname pointing to the assigned `onrender.com` address. With Cloudflare DNS, begin with **DNS only** so Render can verify the names and issue certificates. Once Render confirms both certificates, enable **Proxied** for the owner hostname so Access can authenticate browsers. The agent hostname serves the MCP endpoint using Airport bearer authentication. [Render custom domains](https://render.com/docs/custom-domains) · [Cloudflare DNS setup on Render](https://render.com/docs/configure-cloudflare-dns)
+5. Visit the owner hostname in a fresh browser and confirm it prompts for the configured identity. Complete **Verify a deployment** below, including an agent request from outside the operator's network. Test Composio callbacks before changing the verification URL for any project that already serves another installation.
+
+Render probes `GET /healthz` directly. The gateway returns an empty `204` when its tenant directory is accessible and an empty `503` when the directory is unavailable. The probe works before custom-domain verification and does not open an owner database or call Composio. Back up the volume and keep the stable tenant secret available for restore. [Render health checks](https://render.com/docs/health-checks)
+
 ## Network and identity
 
 1. Choose stable URLs. For example, publish the owner console at `https://owners.example.com` and the agent gateway at `https://agents.example.com/v1`. The owner UI needs the root of its own origin. The agent base can include a path prefix.
