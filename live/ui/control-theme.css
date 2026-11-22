@@ -109,8 +109,6 @@
   border-color:#b7c59f; box-shadow:none; background:#e3edcb; color:#223e2c;
 }
 .cp-page .cp-toolbar { background:#f7f7ec }
-.cp-page .cp-toolbar form { background:var(--panel) }
-.cp-page .cp-toolbar form:focus-within { outline-color: #3b6644 }
 .cp-page .cp-label-value, .rg-endpoint input[readonly] { background:#f4f4e9; color:var(--text) }
 .cp-page .cp-text-link { color:#375b3b; font-weight:600 }
 .cp-page .cp-kind { padding:.2em .52em; border:1px solid #c8d1be; border-radius:4px; color:#4a5a47; background:#f1f4e7 }
@@ -154,7 +152,6 @@
   .rg-page .rg-filters { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) }
   .rg-page .rg-filters input,.rg-page .rg-filters select { width:100%;min-width:0 }
   .cp-page .cp-permission, .cp-page .cp-field { min-width:0 }
-  .cp-page .cp-toolbar form { width:0 }
 }
 @media (max-width:480px) {
   .cp-page .section-tabs a { padding:.45rem .64rem }
