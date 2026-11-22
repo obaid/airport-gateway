@@ -4,7 +4,6 @@
   const find = selector => document.querySelector(selector);
   const tokenKey = 'airport.account.invite';
   const tokenFormat = /^ainv_[A-Za-z0-9_-]{43}$/;
-  const signoutURL = '/cdn-cgi/access/logout';
   let session, inviteToken = '', invalidLink = false, settingsHost, createdInvite;
 
   function element(tag, className, text) {
@@ -129,7 +128,7 @@
       if(e.key==='Escape' && !pop.hidden){e.stopPropagation();e.preventDefault();closeMenu(true);}
     });
     document.addEventListener('click',e=>{if(!dock.contains(e.target) || e.target.closest('#account-popover a'))closeMenu();});
-    dock.querySelector('[data-account-logout]').addEventListener('click',()=>remember(''));
+    dock.querySelector('[data-account-logout]').addEventListener('click',signOut);
   }
   function gate(title, description) {
     const root = find('#account-access');
@@ -151,9 +150,26 @@
     el.append(symbol('check',15),element('span','','Signed in as '+email));
     return el;
   }
+  async function signOut(event) {
+    event.preventDefault();
+    remember('');
+    if (session?.authMode !== 'email') {
+      location.assign('/cdn-cgi/access/logout');
+      return;
+    }
+    try {
+      const result = await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json','X-Airport-Console':'1'},body:'{}'});
+      if (result.ok || result.status===401) return location.replace('/login');
+    } catch { /* Let the user retry without implying their session was cleared. */ }
+    const panel=gate('Couldn’t sign out','Check your connection and try again.');
+    panel.append(button('Retry sign out','primary',signOut));
+  }
   function switchIdentity(panel) {
     const foot = element('div','acct-entry-foot');
-    foot.append(link('Use a different email',signoutURL,'acct-text-link'));
+    const other=link('Use a different email','/login','acct-text-link');
+    other.addEventListener('click',signOut);
+    foot.append(other);
     panel.append(foot);
   }
   function showRegistration() {

@@ -10,6 +10,7 @@ import { createCatalog, parseProjectAuthConfigs } from './catalog.mjs';
 import { body as readOwnerBody, createOwnerHandler, serveOwnerAsset } from './owner.mjs';
 import { createToolRunner, makeAgentHandler } from './agent.mjs';
 import { canonicalEmail, createAccounts } from './accounts.mjs';
+import { createCodeSender, createEmailAuth, readEmailConfig, requestAddress } from './email-auth.mjs';
 import { createStore } from './store.mjs';
 
 const gatewayRoutes = new Set(['/mcp','/api/gmail/inbox-counts','/airport/connect','/pair/start','/pair/token','/agents/register']);
@@ -27,11 +28,18 @@ function httpsBase(value,name,allowPath) {
 export function readHostedConfig(env = process.env) {
   const owner = httpsBase(env.AIRPORT_OWNER_ORIGIN,'AIRPORT_OWNER_ORIGIN',false);
   const agent = httpsBase(env.AIRPORT_AGENT_BASE,'AIRPORT_AGENT_BASE',true);
-  const issuer = httpsBase(env.CF_ACCESS_ISSUER,'CF_ACCESS_ISSUER',false);
-  if (!/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(issuer.hostname) || issuer.port) {
-    throw Error('Set CF_ACCESS_ISSUER to the Cloudflare Access team origin.');
+  const authMode = env.AIRPORT_AUTH_MODE ?? 'access';
+  if (!['access','email'].includes(authMode)) throw Error('Set AIRPORT_AUTH_MODE to email or access.');
+  let issuer, emailConfig;
+  if (authMode==='access') {
+    issuer = httpsBase(env.CF_ACCESS_ISSUER,'CF_ACCESS_ISSUER',false);
+    if (!/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(issuer.hostname) || issuer.port) {
+      throw Error('Set CF_ACCESS_ISSUER to the Cloudflare Access team origin.');
+    }
+    if (!env.CF_ACCESS_AUD?.trim()) throw Error('Set CF_ACCESS_AUD to the owner application audience.');
+  } else {
+    emailConfig = readEmailConfig(env);
   }
-  if (!env.CF_ACCESS_AUD?.trim()) throw Error('Set CF_ACCESS_AUD to the owner application audience.');
   const secretText = env.AIRPORT_TENANT_SECRET || '';
   const secret = Buffer.from(secretText,'base64url');
   if (secret.length < 32 || secret.toString('base64url') !== secretText) {
@@ -56,33 +64,34 @@ export function readHostedConfig(env = process.env) {
   if (!['0','1'].includes(maintenance)) throw Error('Set AIRPORT_MAINTENANCE to 0 or 1.');
   return {
     ownerOrigin:owner.origin,agentBase:agent.href.replace(/\/$/,''),
-    issuer:issuer.origin,audience:env.CF_ACCESS_AUD.trim(),secret,dataDir:env.AIRPORT_HOSTED_DATA_DIR,
+    authMode,emailConfig,renderIngress:env.RENDER==='true',issuer:issuer?.origin,audience:env.CF_ACCESS_AUD?.trim(),secret,dataDir:env.AIRPORT_HOSTED_DATA_DIR,
     apiKey:env.COMPOSIO_API_KEY.trim(),gmailConfig:authConfigs.gmail || env.COMPOSIO_GMAIL_AUTH_CONFIG_ID?.trim() || undefined,authConfigs,verifierPath,
     host:env.HOST || '127.0.0.1',port,maintenance:maintenance === '1',signupMode,bootstrapEmail,bootstrapTenant
   };
 }
 
 function errorResponse(res,status,reason,code) {
-  const message = reason || {401:'Sign in to Airport with Cloudflare Access.',404:'Route not found.',500:'Airport could not complete the request.'}[status];
+  const message = reason || {401:'Sign in to Airport.',404:'Route not found.',500:'Airport could not complete the request.'}[status];
   res.writeHead(status,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Type':'application/json; charset=utf-8','X-Content-Type-Options':'nosniff'});
   res.end(JSON.stringify(code ? {error:message,code} : {error:message}));
 }
 
-async function serveWelcome(req,res) {
-  // Only hash code from the deployment's static landing page, before any user input.
-  const html=await readFile(new URL('./ui/welcome.html',import.meta.url),'utf8');
+async function servePublicPage(req,res,page) {
+  // Hash only the deployment's static pages. Route names never come from user input.
+  const html=await readFile(new URL('./ui/'+page+'.html',import.meta.url),'utf8');
   const inlineHashes=tag=>Array.from(html.matchAll(new RegExp('<'+tag+'(?:\\s[^>]*)?>([\\s\\S]*?)</'+tag+'>','gi')),
     match=>"'sha256-"+createHash('sha256').update(match[1]).digest('base64')+"'");
   const csp=["default-src 'none'",'style-src '+inlineHashes('style').join(' '),'script-src '+inlineHashes('script').join(' '),
+    ...(page==='login'?["connect-src 'self'"]:[]),
     "img-src 'self' data:","font-src 'self'","frame-ancestors 'none'","base-uri 'none'","form-action 'none'"].join('; ');
   res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-store',
     'Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':csp});
   res.end(req.method==='HEAD'?undefined:html);
 }
 
-export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
+export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode} = {}) {
   // Values for issuer, audience and the key source come exclusively from operator configuration.
-  const keys = createRemoteJWKSet(new URL('/cdn-cgi/access/certs',config.issuer),fetchKeys ? {[customFetch]:fetchKeys} : {});
+  const keys = config.authMode==='access' ? createRemoteJWKSet(new URL('/cdn-cgi/access/certs',config.issuer),fetchKeys ? {[customFetch]:fetchKeys} : {}) : null;
   const gmail = provider || createComposio(config.apiKey,config.gmailConfig);
   const catalogAPI = catalog || createCatalog(config.apiKey,{authConfigs:config.authConfigs});
   const options = {getProvider:()=>gmail,getCatalog:()=>catalogAPI};
@@ -94,10 +103,22 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
   if (!lstatSync(dir).isDirectory()) throw Error('The tenant storage path must be a directory.');
   chmodSync(dir,0o700);
   const accounts=createAccounts(join(config.dataDir,'accounts.sqlite3'),config);
+  const emailAuth = config.authMode==='email' ? createEmailAuth(join(config.dataDir,'authentication.sqlite3'),{
+    secret:config.secret,sendCode:sendCode || createCodeSender(config.emailConfig),
+    verifiedIdentity(email) {
+      const tenant = accounts.tenantForVerifiedEmail(email) ||
+        createHmac('sha256',config.secret).update(JSON.stringify(['airport-email-v1',email])).digest('hex');
+      return {tenant,email};
+    }
+  }) : null;
   const tenants = new Map();
   let closing = false;
 
   async function identity(req) {
+    if (emailAuth) {
+      const person=emailAuth.read(req);
+      return person && accounts.emailSessionIsCurrent(person) ? person : null;
+    }
     const assertion = req.headers['cf-access-jwt-assertion'];
     if (typeof assertion !== 'string' || assertion.length > 32768) return null;
     try {
@@ -185,7 +206,29 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
       'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});
     res.end(JSON.stringify(payload));
   };
-  const session=(person,account)=>({identity:{email:person.email,accountKey:person.tenant},account,signupMode:config.signupMode});
+  const session=(person,account)=>({identity:{email:person.email,accountKey:person.tenant},account,signupMode:config.signupMode,authMode:config.authMode});
+  async function authAPI(req,res,target) {
+    if (req.method!=='POST') return errorResponse(res,404);
+    const form=await readOwnerBody(req,config.ownerOrigin);
+    switch(target) {
+      case '/api/auth/start': {
+        try {
+          const result=await emailAuth.start(form.email,requestAddress(req,config.renderIngress));
+          return sendJSON(res,200,result);
+        } catch (error) {
+          if (error.status===503) return errorResponse(res,503,error.message);
+          throw error;
+        }
+      }
+      case '/api/auth/verify':
+        res.setHeader('Set-Cookie',emailAuth.verify(form.challengeId,form.code,req));
+        return sendJSON(res,200,{ok:true});
+      case '/api/auth/logout':
+        res.setHeader('Set-Cookie',emailAuth.logout(req));
+        return sendJSON(res,200,{ok:true});
+      default: return errorResponse(res,404);
+    }
+  }
   async function accountAPI(req,res,target,person,account) {
     if(req.method==='GET' && target==='/api/account')return sendJSON(res,200,session(person,account));
     if(req.method==='GET' && target==='/api/account/invitations')
@@ -233,10 +276,15 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
         return await entry.agent(req,res);
       }
       if (host !== ownerHost) return errorResponse(res,404);
-      if(target==='/welcome' && ['GET','HEAD'].includes(req.method))return await serveWelcome(req,res);
+      if(target==='/welcome' && ['GET','HEAD'].includes(req.method))return await servePublicPage(req,res,'welcome');
+      if(emailAuth && target.startsWith('/api/auth/')) return await authAPI(req,res,target);
       const person = await identity(req);
+      if(emailAuth && !person && ['GET','HEAD'].includes(req.method)) {
+        if(target==='/login')return await servePublicPage(req,res,'login');
+        if(target==='/')return res.writeHead(303,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',Location:'/login'}).end();
+      }
       if (!person) return errorResponse(res,401);
-      if(target==='/login' && req.method==='GET') {
+      if(target==='/login' && ['GET','HEAD'].includes(req.method)) {
         res.writeHead(303,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',Location:'/'}).end();
         return;
       }
@@ -265,6 +313,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog} = {}) {
   server.on('close',() => {
     closing = true;
     trim();
+    emailAuth?.close();
     accounts.close();
   });
   return server;

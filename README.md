@@ -11,9 +11,9 @@ npm ci --prefix live
 npm test --prefix live
 ```
 
-For an always-on deployment, start the hosted entry point with `npm start --prefix live`. It serves the owner console and MCP gateway, authenticates owners through Cloudflare Access, and persists each owner's workspaces on disk. The hosting guide lists the required environment variables, ingress settings and OAuth configuration. [Hosted deployment](live/HOSTING.md)
+For an always-on deployment, start the hosted entry point with `npm start --prefix live`. It serves the owner console and MCP gateway, signs owners in with a one-time email code, and persists each owner's workspaces on disk. The hosting guide lists the required environment variables, ingress settings and OAuth configuration. [Hosted deployment](live/HOSTING.md)
 
-Hosted accounts support email verification, self-service signup, editable profiles, and sign-out. Share the console's `/welcome` URL with customers. Each account owns a separate set of workspaces, connections and agent credentials.
+Hosted accounts support email verification, self-service signup, editable profiles, and sign-out. Share the console’s `/login` URL with customers. Self-hosters can also configure a Cloudflare Access identity provider. Each account owns a separate set of workspaces, connections and agent credentials.
 
 For development on a Mac, the local entry point uses a one-use owner launcher and an optional tunnel to reach the agent endpoint. [Local setup and workspace controls](live/README.md)
 

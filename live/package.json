@@ -2,12 +2,18 @@
   "name": "airport-gateway",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.16.0" },
+  "engines": {
+    "node": ">=22.16.0"
+  },
   "scripts": {
     "start": "node hosted.mjs",
-    "test": "node --test *.test.mjs"
+    "test": "node --test *.test.mjs",
+    "test:browser": "node --test qa/email-signin.mjs"
   },
   "dependencies": {
     "jose": "6.2.18"
+  },
+  "devDependencies": {
+    "playwright-core": "1.65.1"
   }
 }

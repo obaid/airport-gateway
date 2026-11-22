@@ -1,0 +1,9 @@
+{
+  "name": "airport-auth-mail-relay",
+  "main": "index.mjs",
+  "compatibility_date": "2026-11-21",
+  "workers_dev": true,
+  "preview_urls": false,
+  "send_email": [{"name": "EMAIL", "allowed_sender_addresses": ["signin@auth.airport.so"]}],
+  "observability": {"enabled": false}
+}

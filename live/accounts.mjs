@@ -1,5 +1,5 @@
-// The tenant key is derived from the verified Access issuer and immutable subject.
-// Email is used for invitations and display. It never selects a workspace database.
+// Access uses its signed issuer and subject. Native login binds a proven mailbox
+// to the existing registry entry (or the operator-pinned legacy owner) at sign-in.
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { chmodSync, lstatSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
@@ -87,6 +87,13 @@ export function createAccounts(file, {signupMode='invite',bootstrapEmail=null,bo
     if (signupMode==='open') throw Object.assign(new Error('People can sign up directly while registration is open.'),{status:409,code:'invitations_disabled'});
   }
   return {
+    tenantForVerifiedEmail(email) {
+      return byEmail.get(email)?.tenant || (email===bootstrapEmail ? bootstrapTenant : null);
+    },
+    emailSessionIsCurrent({tenant,email}) {
+      const current=byTenant.get(tenant);
+      return !current || current.email===email;
+    },
     resolve(identity,hasLegacyTenant) {
       const row=byTenant.get(identity.tenant);
       if(row?.email===identity.email && (row.role==='admin' || !bootstrap(identity))) return publicAccount(row);

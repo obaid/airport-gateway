@@ -24,9 +24,11 @@ services:
         sync: false
       - key: AIRPORT_SIGNUP_MODE
         value: open
-      - key: CF_ACCESS_ISSUER
+      - key: AIRPORT_AUTH_MODE
         sync: false
-      - key: CF_ACCESS_AUD
+      - key: AIRPORT_EMAIL_RELAY_URL
+        sync: false
+      - key: AIRPORT_EMAIL_RELAY_SECRET
         sync: false
       - key: AIRPORT_TENANT_SECRET
         sync: false

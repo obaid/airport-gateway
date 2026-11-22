@@ -368,3 +368,78 @@ test('verified legacy and bootstrap identities keep their exact tenant and invit
     {jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'Pilot',version:'1'}}});
   assert.equal(agentReply.status,200);
 });
+
+test('Airport email login preserves verified accounts, host isolation, workspace history and existing agent grants',async t=>{
+  const dir=mkdtempSync(join(tmpdir(),'airport-native-'));
+  const old=env(dir),email='pilot@example.com',subject='legacy-owner';
+  const tenant=createHmac('sha256',Buffer.from(old.AIRPORT_TENANT_SECRET,'base64url'))
+    .update(JSON.stringify([team,subject])).digest('hex');
+  const base={...old,AIRPORT_BOOTSTRAP_OWNER_EMAIL:email,AIRPORT_BOOTSTRAP_OWNER_TENANT:tenant};
+  let app=await listen(readHostedConfig(base));
+  t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
+  const assertion=await token(subject,{email}),member=await token('member');
+  const original=(await app.owner(assertion,'/api/account')).body.account;
+  const memberAccount=await app.signup(member);
+  assert.equal(original.role,'admin');
+  await app.owner(assertion,'/api/workspace-create',{name:'Consulting'});
+  const savedGrant=await app.owner(assertion,'/api/agent-add',{workspace:'personal',name:'Old agent',lifetime:'forever'});
+  assert.equal(savedGrant.status,200);
+  const grant=savedGrant.body;
+  const publicURL=(await app.owner(assertion)).body.publicURL;
+  await app.close();
+
+  const settings={...base,AIRPORT_AUTH_MODE:'email',CF_ACCESS_ISSUER:undefined,CF_ACCESS_AUD:undefined,
+    AIRPORT_EMAIL_ACCOUNT_ID:'a'.repeat(32),AIRPORT_EMAIL_API_TOKEN:'test',AIRPORT_EMAIL_FROM:'signin@example.com'};
+  assert.throws(()=>readHostedConfig({...settings,AIRPORT_EMAIL_API_TOKEN:''}),/AIRPORT_EMAIL_API_TOKEN/);
+  const outbox=new Map();
+  app=await listen(readHostedConfig(settings),{sendCode:async ({email,code})=>{
+    if (email==='offline@example.com') throw Error('private provider details');
+    outbox.set(email,code);
+  }});
+  const headers={origin:old.AIRPORT_OWNER_ORIGIN,'x-airport-console':'1','content-type':'application/json'};
+  const post=(path,form,extra={})=>app.send(ownerHost,path,{...headers,...extra},form);
+  const authenticate=async email=>{
+    const started=await post('/api/auth/start',{email});
+    assert.equal(started.status,200);
+    assert.deepEqual(Object.keys(started.body),['challengeId']);
+    const form={challengeId:started.body.challengeId,code:outbox.get(email)};
+    const attempts=await Promise.all([1,2].map(()=>post('/api/auth/verify',form)));
+    assert.deepEqual(attempts.map(v=>v.status).sort(),[200,401]);
+    return {cookie:attempts.find(x=>x.status===200).headers['set-cookie'][0].split(';')[0]};
+  };
+  assert.equal((await app.send(ownerHost,'/')).headers.location,'/login');
+  assert.equal((await app.owner(assertion)).status,401);
+  assert.equal((await app.send(agentHost,'/api/auth/start',headers,{email})).status,404);
+  assert.equal((await post('/api/auth/start',{email},{origin:'https://other.example'})).status,403);
+  assert.equal((await app.send(ownerHost,'/api/auth/start',{}, {email})).status,403);
+  assert.equal((await post('/api/auth/verify',{email,tenant,code:'12345678'})).status,401);
+  const failure=await post('/api/auth/start',{email:'offline@example.com'});
+  assert.equal(failure.status,503);assert.doesNotMatch(JSON.stringify(failure.body),/private provider/);
+
+  const owner=await authenticate(email);
+  assert.equal((await app.send(ownerHost,'/login',owner)).headers.location,'/');
+  const session=(await app.send(ownerHost,'/api/account',owner)).body;
+  assert.deepEqual(session.account,original);assert.equal(session.identity.accountKey,tenant);assert.equal(session.authMode,'email');
+  assert((await app.send(ownerHost,'/api/state',owner)).body.workspaces.some(w=>w.name==='Consulting'));
+  const signedMember=await authenticate('member@example.com');
+  assert.deepEqual((await app.send(ownerHost,'/api/account',signedMember)).body.account,memberAccount);
+  const newcomer=await authenticate('new@example.com');
+  assert.equal((await app.send(ownerHost,'/api/account',newcomer)).body.account,null);
+  assert.equal((await app.send(ownerHost,'/api/state',newcomer)).status,403);
+  const created=await post('/api/account/signup',{displayName:'New',tenant,role:'admin'},newcomer);
+  assert.equal(created.status,201);assert.equal(created.body.account.role,'member');
+  assert.notEqual(created.body.identity.accountKey,tenant);
+  assert(!(await app.send(ownerHost,'/api/state',newcomer)).body.workspaces.some(w=>w.name==='Consulting'));
+
+  const rpc={jsonrpc:'2.0',id:1,method:'tools/list',params:{}};
+  const endpoint=new URL(publicURL).pathname+'/mcp';
+  assert.equal((await app.send(agentHost,endpoint,{'content-type':'application/json',...owner},rpc)).status,401);
+  assert.equal((await app.send(agentHost,endpoint,{'content-type':'application/json',authorization:'Bearer '+grant.token},rpc)).status,200);
+  assert.equal((await post('/api/auth/logout',{},{...owner,origin:'https://foreign.example'})).status,403);
+  assert.equal((await post('/api/auth/logout',{},owner)).status,200);
+  assert.equal((await app.send(ownerHost,'/api/state',owner)).status,401);
+  assert.equal((await app.send(ownerHost,'/api/state',newcomer)).status,200);
+  const login=await app.send(ownerHost,'/login');
+  assert.equal(login.status,200);
+  assert.match(login.headers['content-security-policy'],/connect-src 'self'/);
+});

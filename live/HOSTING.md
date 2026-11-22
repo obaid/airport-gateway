@@ -1,15 +1,15 @@
 # Host Airport for multiple owners
 
-Run one Node service behind an HTTPS reverse proxy, with a dedicated owner origin and a permanent volume. The hosted service signs owners in through Cloudflare Access, gives each owner separate SQLite state, and publishes a workspace agent endpoint after the owner authorizes it. Bring the repository's `live/` and sibling `dist/` directories together. The server serves the owner UI, fonts, icons and toolkit directory from those directories.
+Run one Node service behind an HTTPS reverse proxy, with a dedicated owner origin and a permanent volume. The hosted service signs owners in with an Airport email code, gives each owner separate SQLite state, and publishes a workspace agent endpoint after the owner authorizes it. Bring the repository's `live/` and sibling `dist/` directories together. The server serves the owner UI, fonts, icons and toolkit directory from those directories.
 
 ## Deploy on Render
 
 The [Render Blueprint](../render.yaml) runs one paid Node.js web service with a 1 GB disk at `/var/data/airport`. The service runs independently of the operator's computer. A disk-backed instance briefly stops serving traffic during a redeploy. Review the selected region and recurring charges before applying the Blueprint. [Render pricing](https://render.com/pricing) · [Persistent disk behavior](https://render.com/docs/disks)
 
-1. Choose separate owner and agent hostnames, for example `app.example.com` and `mcp.example.com`. Configure Cloudflare Access for the owner hostname as described below. An allowlist with a single owner is sufficient for a personal installation.
+1. Choose separate owner and agent hostnames, for example `app.example.com` and `mcp.example.com`. Configure a transactional mail sender as described below.
 2. In the Render Dashboard, choose **New → Blueprint**, select the gateway repository and branch, and use the root `render.yaml`. For a private repository, authorize Render's GitHub app for that repository. The Blueprint runs `npm ci --prefix live` from the repository root so the server can access its sibling `dist/` assets. To validate the plan from a signed-in CLI, run `render blueprints validate render.yaml`. [Blueprint setup](https://render.com/docs/infrastructure-as-code) · [Git provider access](https://render.com/docs/git-provider)
-3. Enter the owner origin, agent base, Access issuer, Access audience, stable tenant secret, and Composio project key in the Blueprint's environment prompts. Generate the tenant secret once using the instructions under **Runtime and persistent storage** and keep a recovery copy. Use the existing Composio project if bringing over accounts connected through that project.
-4. Add both hostnames to the new service under **Settings → Custom Domains**. At the authoritative DNS provider, create a CNAME for each hostname pointing to the assigned `onrender.com` address. With Cloudflare DNS, begin with **DNS only** so Render can verify the names and issue certificates. Once Render confirms both certificates, enable **Proxied** for the owner hostname so Access can authenticate browsers. The agent hostname serves the MCP endpoint using Airport bearer authentication. [Render custom domains](https://render.com/docs/custom-domains) · [Cloudflare DNS setup on Render](https://render.com/docs/configure-cloudflare-dns)
+3. Enter the owner origin, agent base, email authentication mode, mail relay URL and secret, stable tenant secret, and Composio project key in the Blueprint's environment prompts. Generate the tenant secret once using the instructions under **Runtime and persistent storage** and keep a recovery copy. Use the existing Composio project if bringing over accounts connected through that project.
+4. Add both hostnames to the new service under **Settings → Custom Domains**. At the authoritative DNS provider, create a CNAME for each hostname pointing to the assigned `onrender.com` address. With Cloudflare DNS, begin with **DNS only** so Render can verify the names and issue certificates. Once Render confirms both certificates, you may enable **Proxied** on the owner hostname. Airport serves the public sign-in screen and authenticates its owner APIs at the origin. The agent hostname serves the MCP endpoint using Airport bearer authentication. [Render custom domains](https://render.com/docs/custom-domains) · [Cloudflare DNS setup on Render](https://render.com/docs/configure-cloudflare-dns)
 5. Visit the owner hostname in a fresh browser and confirm it prompts for the configured identity. Complete **Verify a deployment** below, including an agent request from outside the operator's network. Test Composio callbacks before changing the verification URL for any project that already serves another installation.
 
 Render probes `GET /healthz` directly. The gateway returns an empty `204` when its tenant directory is accessible and an empty `503` when the directory is unavailable. The probe works before custom-domain verification and does not open an owner database or call Composio. Back up the volume and keep the stable tenant secret available for restore. [Render health checks](https://render.com/docs/health-checks)
@@ -17,21 +17,32 @@ Render probes `GET /healthz` directly. The gateway returns an empty `204` when i
 ## Network and identity
 
 1. Choose stable URLs. For example, publish the owner console at `https://owners.example.com` and the agent gateway at `https://agents.example.com/v1`. The owner UI needs the root of its own origin. The agent base can include a path prefix.
-2. Create a Cloudflare Access self-hosted application covering the entire owner hostname, including assets, API and OAuth callbacks. Connect a human identity provider and set the Allow policy for the people using Airport. Record the Access team URL and this application's audience tag. Airport validates the RS256 assertion against the configured team's rotating JWKS and checks issuer, audience, expiry and application subject. [Cloudflare Access application setup](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/) · [JWT validation and audience settings](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
-3. Route both hosts to the Node listener, preserving the original Host and path. On the owner route, forward the edge-issued `Cf-Access-Jwt-Assertion`. On the agent host, publish the configured prefix followed by `/gateway/`. Agent setup and invitation exchange need a public HTTPS route outside the owner browser login. A data request requires an Airport-issued workspace bearer credential. Apply edge rate limits to the public enrollment and pairing routes.
+2. For the native sign-in page, set `AIRPORT_AUTH_MODE=email` and choose one of the mail transports below. Both verify the same eight-digit code, which expires after ten minutes and allows five guesses. A successful sign-in creates a revocable 14-day session in a Secure, HttpOnly, host-only cookie. Sign-out revokes the server-side session.
+3. Route both hosts to the Node listener, preserving the original Host and path. On the agent host, publish the configured prefix followed by `/gateway/`. An agent request requires a workspace bearer credential. Apply edge rate limits to enrollment and pairing routes.
 4. Terminate TLS at the proxy and keep the Node listener private. By default it binds to `127.0.0.1:8080`. A private container may set `HOST=0.0.0.0` and configure its ingress to reach that port. Preserve `Authorization` on agent requests. Configure proxy logs to omit query strings, authorization headers, invitation bodies and OAuth callback parameters.
+
+### Send sign-in codes
+
+Onboard a dedicated Cloudflare sending subdomain and verify its DNS records. Check that the subdomain shows as enabled. Turn off message-content previews for the sign-in sender. The gateway can use either transport. [Cloudflare Email Sending](https://developers.cloudflare.com/email-service/configuration/subdomains/)
+
+- **Worker relay.** The included Worker accepts a time-stamped signature from Airport and sends one fixed sign-in template. For another deployment, set your verified sender in the Worker and its binding’s allowed sender list. From `workers/sign-in-email/`, deploy the Worker with Wrangler, then set its `RELAY_SECRET` with `wrangler secret put RELAY_SECRET`. Generate a dedicated 32-byte random secret encoded as base64url and enter the same string in Render’s `AIRPORT_EMAIL_RELAY_SECRET`. Set `AIRPORT_EMAIL_RELAY_URL` to the Worker’s HTTPS `/sign-in` endpoint. [Worker source](../workers/sign-in-email/index.mjs)
+- **Direct REST delivery.** Use `AIRPORT_EMAIL_FROM`, `AIRPORT_EMAIL_ACCOUNT_ID` and `AIRPORT_EMAIL_API_TOKEN` in place of the relay variables. Scope the token to Email Sending for the chosen Cloudflare account. [Email Sending REST API](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/)
+
+### Moving a Cloudflare Access installation to email sign-in
+
+1. Keep a consistent backup of the registry and tenant databases. Preserve the tenant secret, Composio project, disk, hostnames and existing bootstrap administrator pair. The account registry maps each customer’s previously verified address to the original tenant. For deployments predating the account registry, have each legacy owner open Airport through Access first so Airport can record that mapping. For the operator’s own legacy workspace, the explicitly configured verified address and tenant key also support enrollment.
+2. Deploy the new server with the current Access configuration. Configure and verify your sending domain and relay. Set the mail credentials and `AIRPORT_AUTH_MODE=email` together, leaving the existing edge policy in place for the first native sign-in. The origin now requires its own session and ignores Access assertions.
+3. Sign in through Airport with the owner’s previously verified email and check the original account key, role, workspaces and an existing agent URL. Use a signed-out browser to confirm that `/api/account` and `/api/state` are protected. Remove the old Access applications for the console hostname and any path-specific exceptions. Visit the console again in a fresh browser and confirm it goes straight to Airport sign-in.
+
+Self-hosters retaining Access can set `AIRPORT_AUTH_MODE=access` (also the default when omitted), `CF_ACCESS_ISSUER` and `CF_ACCESS_AUD`. Protect the owner hostname with a self-hosted Access application and a human identity provider. Forward the edge-issued `Cf-Access-Jwt-Assertion` to Airport. The public `/welcome` page can have a path-specific bypass. Airport validates the signature, issuer, audience, expiry, email and subject before serving the owner console. [Cloudflare Access setup](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
 
 ## Runtime and persistent storage
 
 ### Customer accounts
 
-Set `AIRPORT_SIGNUP_MODE=open` for self-service registration. A customer verifies an email with the configured Cloudflare Access identity provider and chooses a display name. Each account starts with its own Personal and Work workspaces. Existing workspace owners retain their data through the same verified Access issuer and subject. Changing a display name does not change the gateway URL.
+Set `AIRPORT_SIGNUP_MODE=open` for self-service registration. New customers verify their email and choose a display name to create their account. Each account gets independent Personal and Work workspaces and the member role. Use `AIRPORT_SIGNUP_MODE=invite` for invitations bound to particular verified addresses.
 
-For the open configuration, use an **Allow** policy on the console hostname that requires a verified email login, such as the One-time PIN login method. Keep the gateway hostname outside that browser login. To publish the sign-in page, add a more specific Access application for the console's `/welcome` path with a Bypass policy scoped to that public destination. At the origin, only an exact GET or HEAD for `/welcome` serves public HTML. `/login`, account APIs, OAuth callbacks and workspace routes require a signed Access assertion. Make the broader login policy active only after the account-aware server is deployed. [Access policies](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/) · [Access application paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
-
-To bind the platform administrator, set `AIRPORT_BOOTSTRAP_OWNER_EMAIL` to the verified address and `AIRPORT_BOOTSTRAP_OWNER_TENANT` to its 64-character account key. The signed-in account API exposes this key at `identity.accountKey`. Existing owners can also identify it in their verified gateway URL. Both values must match the identity for the administrator grant. New self-service accounts receive the member role.
-
-Account profiles are stored in `accounts.sqlite3` at the root of the persistent data directory. Include the registry and the tenant databases in consistent backups, together with the separately stored tenant secret. Self-hosters can select `AIRPORT_SIGNUP_MODE=invite` for invitations bound to individual verified addresses. Registering a customer consumes the identity provider's applicable seat allowance.
+To bind the administrator, set `AIRPORT_BOOTSTRAP_OWNER_EMAIL` to the verified address and `AIRPORT_BOOTSTRAP_OWNER_TENANT` to its exact 64-character tenant key. The signed-in account API exposes this as `identity.accountKey`. Include the account registry (`accounts.sqlite3`), authentication data (`authentication.sqlite3`) and the tenant databases in consistent backups, with the stable tenant secret stored separately.
 
 Use Node.js 22.16 or later with built-in `node:sqlite` support. From the repository root, install the locked dependency and run the isolated tests.
 
@@ -40,6 +51,8 @@ cd live
 npm ci
 npm test
 ```
+
+For a browser check of sign-in, code verification, explicit signup and logout, run `npx playwright-core install chromium` and `npm run test:browser` from `live/`. Alternatively set `AIRPORT_TEST_CHROMIUM` to the path of an installed Chrome or Chromium executable. This test uses OpenSSL for a temporary local HTTPS certificate and an in-memory test mailbox.
 
 Create a private persistent directory owned by the Airport service account, such as `/var/lib/airport`, with mode `0700`. Store secrets separately from the repository and database volume. Generate the stable tenant key once. This example writes an environment file directly into an existing private secrets directory and refuses to replace a file.
 
@@ -58,8 +71,11 @@ Configure the process environment through your service manager or secrets manage
 | --- | --- |
 | `AIRPORT_OWNER_ORIGIN` | Dedicated HTTPS console origin, e.g. `https://owners.example.com`. |
 | `AIRPORT_AGENT_BASE` | Canonical HTTPS gateway base, e.g. `https://agents.example.com/v1`. Airport appends `/gateway/<tenant>`. |
-| `CF_ACCESS_ISSUER` | Exact team origin, e.g. `https://your-team.cloudflareaccess.com`. |
-| `CF_ACCESS_AUD` | Audience tag of the owner Access application. |
+| `AIRPORT_AUTH_MODE` | `email` for native sign-in or `access` for an Access-protected console. |
+| `AIRPORT_EMAIL_RELAY_URL`, `AIRPORT_EMAIL_RELAY_SECRET` | Native sign-in using the Worker relay. |
+| `AIRPORT_EMAIL_FROM`, `AIRPORT_EMAIL_ACCOUNT_ID`, `AIRPORT_EMAIL_API_TOKEN` | Native sign-in using direct Cloudflare delivery. |
+| `CF_ACCESS_ISSUER` | Access mode only. Exact team origin, e.g. `https://your-team.cloudflareaccess.com`. |
+| `CF_ACCESS_AUD` | Access mode only. Audience tag of the owner Access application. |
 | `AIRPORT_HOSTED_DATA_DIR` | Absolute durable volume path, e.g. `/var/lib/airport`. |
 | `AIRPORT_TENANT_SECRET` | Stable base64url secret with at least 32 random bytes. |
 | `COMPOSIO_API_KEY` | Airport's private Composio project API key, provisioned once by the platform operator. |
@@ -69,7 +85,7 @@ Configure the process environment through your service manager or secrets manage
 
 With the required values injected, start the service from `live/` using `npm start`. If the service manager injects everything except the tenant secret generated above, launch `node --env-file=/private/airport-secrets/tenant.env hosted.mjs`. Configure the supervisor to restart the process after a crash or machine reboot.
 
-Each owner gets a database under `AIRPORT_HOSTED_DATA_DIR/tenants/`. The namespace comes from an HMAC of the verified issuer and subject. Email changes preserve that namespace. A new tenant secret, issuer or identity-provider subject produces a different namespace. Back up the stable tenant secret and configuration privately. Use a consistent SQLite backup or stop the service before copying its volume, including any journal files. Keep a single active writer process per volume. Additional replicas require a routing and storage design that preserves each owner's SQLite state.
+Each owner gets a database under `AIRPORT_HOSTED_DATA_DIR/tenants/`. Existing registered customers keep their namespace when switching from Access to the same verified email. New native accounts derive their namespace from the tenant secret and canonical verified email. Access-mode tenants derive theirs from the secret, issuer and immutable subject. Back up the stable tenant secret and configuration privately. Use a consistent SQLite backup or stop the service before copying its volume, including any journal files. Keep a single active writer process per volume. Additional replicas require a routing and storage design that preserves each owner's SQLite state.
 
 ## Configure app sign-in once
 
@@ -80,13 +96,13 @@ Each owner gets a database under `AIRPORT_HOSTED_DATA_DIR/tenants/`. The namespa
 
 ### Verify the returning account owner
 
-For hosted production OAuth, configure `AIRPORT_COMPOSIO_VERIFIER_PATH=/oauth/verify`, then set the Composio project's verification URL to the same public owner URL, for example `https://owners.example.com/oauth/verify`. Apply the same Access policy as the rest of the owner console. This project-wide setting affects every provider-redirect OAuth flow in the project. Start test connections from Airport. [Composio callback identity verification](https://docs.composio.dev/reference/api-reference/connected-accounts)
+For hosted production OAuth, configure `AIRPORT_COMPOSIO_VERIFIER_PATH=/oauth/verify`, then set the Composio project's verification URL to the same public owner URL, for example `https://owners.example.com/oauth/verify`. The callback requires the same owner session as the console. This project-wide setting affects every provider-redirect OAuth flow in the project. Start test connections from Airport. [Composio callback identity verification](https://docs.composio.dev/reference/api-reference/connected-accounts)
 
 Composio returns a ten-minute, single-use `session_uri`. Start one app sign-in at a time per signed-in Airport owner. Airport finds the server-held owner and account for the pending connection, redeems the session, checks the returned account ID and toolkit, then verifies the upstream account before activating it. The dedicated Gmail path also checks the expected mailbox address. If multiple sign-ins are pending, cancel the other pending connections in Airport and retry the intended flow. The same operator may instead leave verification off in a separate development project. In that mode `/oauth/done` returns to the UI and Airport checks the stored account through Composio. [Complete a deferred connection](https://docs.composio.dev/reference/api-reference/connected-accounts/postConnectedAccountsCompleteAuth)
 
 ## Verify a deployment
 
-1. Open the owner hostname in a fresh browser session. Complete Cloudflare Access sign-in, create a workspace and connect a test provider account. A second independent identity should see its own workspaces, connections and activity. Both owners can connect the same toolkit using Airport's shared project configuration.
+1. Open the owner hostname in a fresh browser session. Complete Airport sign-in, create a workspace and connect a test provider account. A second independent identity should see its own workspaces, connections and activity. Both owners can connect the same toolkit using Airport's shared project configuration.
 2. Open the test connection, enable a specific read operation, and issue an invitation for a named agent. In a compatible agent client, claim the invitation through the HTTPS setup URL the console displays. Save the returned bearer in the client's private credential store. The setup guide uses `/gateway/<tenant>/airport/connect`; the MCP client uses the same tenant prefix followed by `/mcp`. A client must support Streamable HTTP and the configured bearer authorization.
 3. Ask the agent to list its tools and run the approved read. Confirm the actor, workspace and result in owner activity. Block the tool and refresh the agent's tool list. Revoke the agent and confirm that its saved bearer loses access. An owner API request on the agent host should return 404. A missing bearer for an agent data request should return 401.
 4. Restart the service using the same volume, tenant secret, project and public URLs. Sign back in and check that the same owners retain their state and their stable gateway addresses.
