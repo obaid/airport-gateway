@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { createRemoteJWKSet, customFetch, jwtVerify } from 'jose';
 import { createComposio } from './composio.mjs';
 import { createCatalog, parseProjectAuthConfigs } from './catalog.mjs';
-import { body as readOwnerBody, createOwnerHandler, serveBrandAsset, serveOwnerAsset } from './owner.mjs';
+import { body as readOwnerBody, connectionSettingsURL, createOwnerHandler, serveBrandAsset, serveOwnerAsset } from './owner.mjs';
 import { createToolRunner, makeAgentHandler } from './agent.mjs';
 import { canonicalEmail, createAccounts } from './accounts.mjs';
 import { createCodeSender, createEmailAuth, readEmailConfig, requestAddress } from './email-auth.mjs';
@@ -201,7 +201,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
         const verified = await gmail.verify(p.owner,p.account);
         if (!verified.active || !store.activate(p.workspace,p.attempt,verified.email)) throw Error();
       }
-      res.writeHead(303,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',Location:'/'}).end();
+      res.writeHead(303,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',Location:connectionSettingsURL(p.workspace,p.id || 'pilot-gmail')}).end();
     } catch {errorResponse(res,409,'Airport could not verify this connection. Return to Airport and restart sign-in.');}
   }
 

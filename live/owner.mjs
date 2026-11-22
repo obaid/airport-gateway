@@ -25,6 +25,9 @@ const assets=new Map([
   ['/favicon.svg',['../dist/favicon.svg','image/svg+xml']],['/assets/favicon.svg',['../dist/favicon.svg','image/svg+xml']]
 ]);
 function json(res,status,data,extras={}) {res.writeHead(status,{...headers,'Content-Type':'application/json; charset=utf-8',...extras});res.end(JSON.stringify(data));}
+export function connectionSettingsURL(workspace,id) {
+  return '/#connections/'+encodeURIComponent(id)+'/settings?workspace='+encodeURIComponent(workspace);
+}
 export function serveBrandAsset(req,res,pathname) {
   return publicBrandAssets.has(pathname) && serveOwnerAsset(req,res,pathname);
 }
@@ -64,9 +67,24 @@ export function createOwnerHandler({store,requireOwner,ownerOrigin,publicBase,lo
       const publicURL=typeof publicBase==='function'?publicBase():publicBase;
       if(await serveOwnerAsset(req,res,p))return;
       if(p==='/oauth/done'&&req.method==='GET'){
-        // The callback is only navigation. The owner session checks a server-held
-        // connection attempt and verifies its Gmail profile before activating it.
-        res.writeHead(303,{...headers,Location:'/'});return res.end();
+        let location='/';
+        const workspace=u.searchParams.get('workspace'),connectionId=u.searchParams.get('connection');
+        if(workspace && connectionId){
+          try {
+            await requireOwner(req);
+            const c=store.getConnection(workspace,connectionId);
+            location=connectionSettingsURL(c.workspace,c.id);
+            // Composio may still be finalizing consent. The console retries a pending
+            // connection using the saved account, independently of callback parameters.
+            try { await actions.get('connection-check')({workspace,connectionId,pendingOnly:true}); }
+            catch { /* Return to the connection even on a transient provider error. */ }
+          } catch(error){
+            // Local launcher cookies can be absent on a cross-site navigation.
+            // A missing session or a connection from another tenant just returns home.
+            if(error.status!==401 && error.status!==404)throw error;
+          }
+        }
+        res.writeHead(303,{...headers,Location:location});return res.end();
       }
       if(establishSession && p==='/api/session'&&req.method==='POST'){
         const b=await body(req,ownerOrigin);

@@ -57,6 +57,7 @@
       v.id=id;v.seq++;v.fetched=false;v.loading=false;v.items=[];v.cursors=[''];v.index=0;v.next=null;
       v.search='';v.input='';v.filter='all';v.error='';v.notice='';v.signature='';
     }
+    if(v.c?.status==='pending' && c?.status!=='pending'){v.notice='';v.feedbackError=false;}
     v.c=c;v.accounts=accounts;v.tab=mode==='policies'?'tools':tabs.includes(ctx.route.tab)?ctx.route.tab:'settings';
     const draftKey=JSON.stringify([ctx.workspace.id,id]);
     if(!drafts.has(draftKey))drafts.set(draftKey,new Map());
@@ -75,11 +76,11 @@
     const c=v.c,active=c.status==='active',pending=c.status==='pending',gone=!active&&!pending;
     if(c.pilot)return '';
     const status={active:'Connected',pending:'Awaiting sign-in',disabled:'Disconnected'}[c.status]||title(c.status);
-    const next=active?action('check',v.checking?'Checking…':'Check connection','minor',v.checking):pending?action('check','Check sign-in','primary',v.checking):`<a class="button primary" href="#integrations?app=${encodeURIComponent(c.toolkit)}">Connect another account</a>`;
+    const next=gone?`<a class="button primary" href="#integrations?app=${encodeURIComponent(c.toolkit)}">Connect another account</a>`:action('check',v.checking?'Checking…':pending?'Check sign-in':'Check connection','minor',v.checking);
     return `<section class="cp-panel setting-panel"><div class="cp-section-head"><h3>Account settings</h3></div><div class="cp-settings-form">
       <div class="cp-field"><span>Account label</span><strong class="cp-label-value">${esc(c.label)}</strong></div>
       <dl class="cp-facts"><div><dt>Workspace</dt><dd>${esc(v.ctx.workspace.name)}</dd></div><div><dt>Connection type</dt><dd>Composio · ${esc(appName(c))}</dd></div><div><dt>Status</dt><dd>${esc(status)}</dd></div></dl>
-      ${next}${pending?'<p class="cp-hint">Finish signing in with the provider, then check this connection.</p>':''}${gone?'<p class="cp-hint">A new sign-in creates a separate connection with its own tool permissions.</p>':''}</div></section>
+      ${pending?'<p class="cp-hint">Finish signing in with the provider. Airport checks this connection automatically when you return.</p>':''}${next}${gone?'<p class="cp-hint">A new sign-in creates a separate connection with its own tool permissions.</p>':''}</div></section>
       ${!gone?`<section class="cp-panel cp-danger disconnect-row"><div><h3>${pending?'Cancel connection':'Disconnect account'}</h3><p>${pending?'Cancel this pending sign-in.':'Remove this account and its permissions from '+esc(v.ctx.workspace.name)+'. Its request history remains available.'}</p></div>${action('disconnect',pending?'Cancel sign-in':'Disconnect','minor')}</section>`:''}`;
   }
   function activity(v){
@@ -232,7 +233,14 @@
       case 'check':{
         if(v.checking)return;v.checking=true;v.notice='';paint(v);
         const id=v.id,ws=v.ctx.workspace.id;
-        try{const r=await v.ctx.request('connection-check',{workspace:ws,connectionId:id});if(!live(v)||v.id!==id)return;await v.ctx.refresh();if(!live(v)||v.id!==id)return;v.notice=r.status==='active'?'Connection verified.':'Connection status updated.';v.feedbackError=false;}
+        try{
+          await v.ctx.request('connection-check',{workspace:ws,connectionId:id,pendingOnly:v.c.status==='pending'});
+          if(!live(v)||v.id!==id)return;
+          await v.ctx.refresh();
+          if(!live(v)||v.id!==id)return;
+          v.notice=v.c.status==='active'?'Connection verified.':v.c.status==='pending'?'Still waiting for the provider to finish sign-in.':'This connection is disconnected.';
+          v.feedbackError=false;
+        }
         catch(error){if(!live(v)||v.id!==id)return;v.notice=error.message||'Could not check this connection.';v.feedbackError=true;}
         finally{if(live(v)&&v.id===id){v.checking=false;paint(v);}}
       }

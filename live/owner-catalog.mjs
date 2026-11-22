@@ -28,6 +28,7 @@ function browseDirectory({search='',cursor='0'}) {
 
 export function createCatalogActions({store,getCatalog,callbackURL}) {
   const provider=()=>getCatalog() || fail('Airport’s app connections are awaiting platform setup. Contact your Airport administrator.',503);
+  const checks=new Map();
   function ws(body){store.get(body.workspace);return body.workspace;}
   function conn(body){return store.getConnection(ws(body),body.connectionId);}
   async function listTools(b) {
@@ -46,7 +47,10 @@ export function createCatalogActions({store,getCatalog,callbackURL}) {
     if(Object.hasOwn(b,'authConfigId'))fail('Airport manages app sign-in configurations.',403);
     const c=store.createConnection(workspace,{toolkit:b.toolkit,label});
     try {
-      const linked=await catalog.start({owner:c.owner,toolkit:c.toolkit,callbackURL});
+      const returnURL=new URL(callbackURL);
+      returnURL.searchParams.set('workspace',workspace);
+      returnURL.searchParams.set('connection',c.id);
+      const linked=await catalog.start({owner:c.owner,toolkit:c.toolkit,callbackURL:returnURL.href});
       store.attachConnection(workspace,c.id,linked.accountId);
       if(!linked.url){
         const verified=await catalog.verify({owner:c.owner,accountId:linked.accountId,toolkit:c.toolkit});
@@ -56,13 +60,22 @@ export function createCatalogActions({store,getCatalog,callbackURL}) {
       return {connectionId:c.id,url:linked.url,status:linked.url?'pending':'active'};
     }catch(err){store.disableConnection(workspace,c.id);throw err;}
   }
-  async function check(b) {
-    const c=conn(b);
-    if(c.status==='disabled')fail('This connection has been disconnected.',409);
+  async function verifyConnection(c) {
     const {active,status}=await provider().verify({owner:c.owner,toolkit:c.toolkit,accountId:c.accountId,authConfigId:c.authConfigId});
-    if(active && c.status==='pending')store.activateConnection(b.workspace,c.id,c.accountId);
-    if(!active && (c.status==='active'||['FAILED','DISABLED','EXPIRED','REVOKED'].includes(status)))store.disableConnection(b.workspace,c.id);
-    return {status:store.getConnection(b.workspace,c.id).status};
+    const current=store.getConnection(c.workspace,c.id);
+    if(current.status===c.status && current.accountId===c.accountId){
+      if(active && c.status==='pending')store.activateConnection(c.workspace,c.id,c.accountId);
+      if(!active && (c.status==='active'||['FAILED','DISABLED','EXPIRED','REVOKED'].includes(status)))store.disableConnection(c.workspace,c.id);
+    }
+    return {status:store.getConnection(c.workspace,c.id).status};
+  }
+  function check(b) {
+    const c=conn(b);
+    if(b.pendingOnly===true && (c.status!=='pending' || !c.accountId))return {status:c.status};
+    if(c.status==='disabled')fail('This connection has been disconnected.',409);
+    // The provider return and the original console can arrive together.
+    if(!checks.has(c.id))checks.set(c.id,verifyConnection(c).finally(()=>checks.delete(c.id)));
+    return checks.get(c.id);
   }
   async function access(b) {
     const c=conn(b);

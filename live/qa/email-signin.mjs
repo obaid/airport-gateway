@@ -26,6 +26,7 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     tls.listen(0,'127.0.0.1');await once(tls,'listening');
     const origin='https://airport-owner.test:'+tls.address().port;
     let delivered;
+    const githubAuthorizations=new Map();
     gateway=createHostedGateway(readHostedConfig({
       AIRPORT_OWNER_ORIGIN:origin,AIRPORT_AGENT_BASE:'https://mcp.example.test',
       AIRPORT_HOSTED_DATA_DIR:dir,AIRPORT_TENANT_SECRET:Buffer.alloc(32,10).toString('base64url'),
@@ -33,7 +34,21 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       AIRPORT_EMAIL_FROM:'signin@example.test',AIRPORT_EMAIL_API_TOKEN:'fixture',COMPOSIO_API_KEY:'fixture'
     }),{
       sendCode:async message=>{delivered=message;},provider:{},
-      catalog:{listToolkits:async()=>({items:[],nextCursor:null})}
+      catalog:{
+        listToolkits:async()=>({items:[{slug:'github',name:'GitHub',authSchemes:['OAUTH2']}],nextCursor:null}),
+        start:async({owner,toolkit,callbackURL})=>{
+          assert.equal(toolkit,'github');
+          const accountId='ca_browser_'+(githubAuthorizations.size+1);
+          githubAuthorizations.set(accountId,{owner,callbackURL,approved:false});
+          return {accountId,url:'https://connect.composio.dev/link/'+accountId};
+        },
+        verify:async({owner,toolkit,accountId})=>{
+          const auth=githubAuthorizations.get(accountId);
+          assert.equal(toolkit,'github');
+          assert.equal(owner,auth.owner);
+          return {active:auth.approved,status:auth.approved?'ACTIVE':'INITIATED'};
+        }
+      }
     });
     gateway.listen(0,'127.0.0.1');await once(gateway,'listening');
     browser=await chromium.launch({headless:true,executablePath:process.env.AIRPORT_TEST_CHROMIUM || undefined,
@@ -132,6 +147,48 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     await page.keyboard.press('Enter');
     await page.waitForFunction(()=>document.getElementById('workspace-name').textContent==='Work');
     assert.equal(await workspaceMenu.isVisible(),false);
+    await ctx.route('https://connect.composio.dev/link/ca_browser_*',route=>
+      route.fulfill({contentType:'text/html',body:'<title>Provider sign-in fixture</title>'}));
+    for(const returnsToAirport of [true,false]){
+      const label=returnsToAirport?'GitHub callback':'GitHub closed tab';
+      await t.test(label+' activates in Work without a manual check',async ()=>{
+        await page.goto(origin+'/#integrations?app=github&workspace=work');
+        await page.getByRole('button',{name:'Connect account',exact:true}).click();
+        const form=page.locator('#toolkit-add');
+        await form.getByRole('textbox').fill(label);
+        const [added]=await Promise.all([
+          page.waitForResponse(r=>r.url()===origin+'/api/connection-add'),
+          form.getByRole('button',{name:'Connect app'}).click()
+        ]);
+        assert.equal(added.status(),200);
+        const {connectionId,url,status}=await added.json();
+        assert.equal(status,'pending');
+        const settings=origin+'/#connections/'+connectionId+'/settings?workspace=work';
+        const [popup]=await Promise.all([
+          ctx.waitForEvent('page'),
+          page.getByRole('link',{name:/Open authorization/}).click()
+        ]);
+        await popup.waitForURL(url);
+        const accountId=new URL(url).pathname.split('/').pop();
+        const auth=githubAuthorizations.get(accountId);
+        auth.approved=true;
+        if(returnsToAirport){
+          const callback=new URL(auth.callbackURL);
+          callback.searchParams.set('status','success');
+          callback.searchParams.set('connected_account_id',accountId);
+          await popup.goto(callback.href);
+          await popup.waitForURL(settings);
+          await popup.locator('.cp-facts dd').filter({hasText:/^Connected$/}).waitFor();
+        }
+        await popup.close();
+        await page.bringToFront();
+        await page.waitForURL(settings,{timeout:35_000});
+        await page.locator('.cp-facts dd').filter({hasText:/^Connected$/}).waitFor();
+        assert.equal(await page.locator('.cp-label-value').textContent(),label);
+        assert.equal(await page.locator('#workspace-name').textContent(),'Work');
+        assert.equal(await page.locator('dialog[open]').count(),0);
+      });
+    }
     await page.getByRole('button',{name:'Account menu for Local Pilot'}).click();
     await page.getByRole('link',{name:'Sign out'}).click();
     await page.getByLabel('Email address').waitFor();

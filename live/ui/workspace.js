@@ -33,6 +33,8 @@
   const numbers = counts => ['total','unread'].filter(k => Number.isSafeInteger(counts?.[k]) && counts[k] >= 0).map(k => `${counts[k].toLocaleString()} ${k}`).join(' · ');
   let state, workspaceId='', busy=false, version=0, terminal=false, stateInflight=false, queuedMessage=null;
   let lastCheck=new Map(), pendingSince=new Map(), testResult=null;
+  const pendingAppChecks=new Map();
+  let returningToConsole=false;
   const regions=new Map();
   const issuedInvites=new Map();
   const current = () => state?.workspaces?.find(w => w.id === workspaceId);
@@ -702,6 +704,11 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const key=missing?location.hash:hrefFor(location.hash,w.id);
     if(key!==location.hash)history.replaceState(null,'',key);
     const changed=key!==mountedKey||w.id!==mountedWorkspace||mountedCatalog!==state.catalogVersion;
+    if(w.id!==mountedWorkspace)returningToConsole=true;
+    if(key!==mountedKey && r.page==='connections' && r.tab==='settings'){
+      const tracker=pendingAppChecks.get(r.id);
+      if(tracker)tracker.until=Date.now()+300000;
+    }
     if(changed){resetPage();mountedKey=key;mountedWorkspace=w.id;mountedCatalog=state.catalogVersion;message('');}
     const selector=$('#workspace');
     const opts=state.workspaces.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}${state.invites?.some(inv=>inv.workspace===s.id)?' · pairing requested':''}</option>`).join('');
@@ -748,6 +755,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       if(grant.expiresAt==='+275760-09-13T00:00:00.000Z') grant.expiresAt=null;
     }
     state=result;network('');render();
+    finishAuthorizationDialog();
   }
   async function action(task) {
     if(busy || !current() || terminal) return;
@@ -831,6 +839,18 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   const manageField=(label,input)=>formField(label,input);
   const actionRow=(content)=>`<div class="actions">${content}</div>`;
   const knownConnection=(w,id)=>(state?.connections||[]).find(c=>c.workspace===w.id&&String(c.id)===String(id));
+  function authorizationDialog() {
+    return dialog.open ? dialog.querySelector('[data-authorizing-id]') : null;
+  }
+  function finishAuthorizationDialog() {
+    const notice=authorizationDialog();
+    if(!notice || notice.dataset.authorizingWorkspace!==workspaceId)return;
+    const w=current(), c=knownConnection(w,notice.dataset.authorizingId);
+    if(!c || !['active','disabled'].includes(c.status))return;
+    closeDialog();
+    navigate('#connections/'+encodeURIComponent(c.id)+'/settings',w.id);
+    message(c.status==='active'?(c.label||toolkitName(c.toolkit))+' connected to '+w.name+'.':'Sign-in did not complete. Connect the app again to retry.',c.status!=='active');
+  }
   const scopedApp=(w,id)=>workspaceApps(w).find(c=>String(c.id)===String(id));
   const scopedAgent=(w,id)=>agentGrants(w).find(a=>String(a.id)===String(id));
   const closeButton=btn('close','Cancel','minor');
@@ -907,8 +927,8 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const pins=(c.tools||[]).filter(t=>t.allowed);
     const approved=pins.length?`<div class="approved-tools"><h3>Approved tools</h3>${pins.map(tool=>`<div><span><strong>${esc(tool.name||tool.slug)}</strong><small>${esc(tool.version||'Version not recorded')}</small></span>${pinControl(c,tool,'Revoke')}</div>`).join('')}</div>`:'';
     showDialog(c.label||toolkitName(c.toolkit),`<div class="identity-line">${mark(c.toolkit,30)}<div><h3>${esc(toolkitName(c.toolkit))}</h3><p>${esc(w.name)} · ${active?'Verified':'Awaiting authorization'}</p></div></div>
-      <p>${active?esc(countText(toolCount(c),'tool'))+' enabled for workspace agents.':'Complete the provider authorization, then check the connection.'}</p>
-      ${actionRow((active?manageBtn('tools','Manage tools',c.id,true):manageBtn('check-app','Check connection',c.id,true))+manageBtn('remove-app','Disconnect',c.id))}${approved}`);
+      <p${active?'':' data-authorizing-id="'+esc(c.id)+'" data-authorizing-workspace="'+esc(w.id)+'"'}>${active?esc(countText(toolCount(c),'tool'))+' enabled for workspace agents.':'Finish signing in with the provider. Airport checks the connection automatically when you return.'}</p>
+      ${actionRow((active?manageBtn('tools','Manage tools',c.id,true):manageBtn('check-app','Check connection',c.id,true))+manageBtn('remove-app','Disconnect',c.id))}${active?'':'<p class="hint" role="status" data-authorization-status></p>'}${approved}`);
     $('#dialog-content').dataset.connection=c.id;
   }
   function agentInfo(id){
@@ -1023,9 +1043,13 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       case 'pick-toolkit':chooseToolkit(Number(id));break;
       case 'copy-setup':copySetup();break;
       case 'check-app':if(scopedApp(w,id))mutateManagement(async()=>{
-        const r=await request('connection-check',{workspace:w.id,connectionId:id});await refresh();
-        closeDialog();if(scopedApp(w,id))navigate('#connections/'+encodeURIComponent(id)+'/settings');else navigate('#connections');
-        message(r.status==='active'?'Connection verified.':r.status==='disabled'?'The provider closed this connection. Connect the app again to restart sign-in.':'Connection status updated.');
+        try {await request('connection-check',{workspace:w.id,connectionId:id,pendingOnly:true});}
+        catch(error){if(dialog.open && control?.isConnected && workspaceId===w.id)throw error;return;}
+        await refresh();
+        if(dialog.open && control?.isConnected && workspaceId===w.id){
+          const status=dialog.querySelector('[data-authorization-status]');
+          if(status)status.textContent='Still waiting for the provider to finish sign-in.';
+        }
       });break;
       case 'remove-app':case 'remove-agent':{
         const isAgent=action==='remove-agent',v=isAgent?scopedAgent(w,id):scopedApp(w,id);if(!v)break;
@@ -1141,10 +1165,19 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     }
     if(f.id==='toolkit-add'){
       const label=f.elements.label.value.trim(),toolkit=f.dataset.toolkit;
-      if(!label)return;mutateManagement(async w=>{const r=await request('connection-add',{workspace:w.id,toolkit,label});
-        if(r.url){const dest=originURL(r.url);if(!dest)throw new Error('The provider returned an invalid authorization URL.');
-          showDialog('Authorize '+toolkitName(toolkit),`<p>Open the provider’s sign-in to authorize ${esc(label)} for ${esc(w.name)}. Return here to check the connection.</p>${actionRow('<a class="action-link primary" href="'+esc(dest)+'" target="_blank" rel="noopener noreferrer">Open authorization ↗</a>'+manageBtn('check-app','Check connection',r.connectionId))}`);
-        }else{await refresh();closeDialog();navigate('#connections/'+encodeURIComponent(r.connectionId)+'/settings');}message('Connection added.');});return;
+      if(!label)return;
+      mutateManagement(async w=>{
+        const r=await request('connection-add',{workspace:w.id,toolkit,label});
+        if(!dialog.open || !f.isConnected || workspaceId!==w.id)return;
+        if(r.url){
+          const dest=originURL(r.url);if(!dest)throw new Error('The provider returned an invalid authorization URL.');
+          showDialog('Authorize '+toolkitName(toolkit),`<p data-authorizing-id="${esc(r.connectionId)}" data-authorizing-workspace="${esc(w.id)}">Open the provider’s sign-in to authorize ${esc(label)} for ${esc(w.name)}. Airport will check the connection automatically.</p>${actionRow('<a class="action-link primary" href="'+esc(dest)+'" target="_blank" rel="noopener noreferrer">Open authorization ↗</a>'+manageBtn('check-app','Check connection',r.connectionId))}<p class="hint" role="status" data-authorization-status></p>`);
+        }else{
+          await refresh();
+          if(!dialog.open || !f.isConnected || workspaceId!==w.id)return;
+          closeDialog();navigate('#connections/'+encodeURIComponent(r.connectionId)+'/settings',w.id);message('Connection added.');
+        }
+      });return;
     }
     if(f.id==='connect-form'){
       const expectedEmail=f.elements.expectedEmail.value.trim();
@@ -1165,8 +1198,44 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   const links=[...document.querySelectorAll('[data-nav]')];
   window.addEventListener('hashchange',()=>{if(current())render();});
   window.addEventListener('popstate',()=>{if(current())render();});
+  async function checkPendingApp() {
+    if(!state?.ready || document.hidden || terminal)return;
+    const returned=returningToConsole;
+    returningToConsole=false;
+    const pending=(state.connections||[]).filter(c=>c.status==='pending');
+    const ids=new Set(pending.map(c=>c.id));
+    for(const id of pendingAppChecks.keys())if(!ids.has(id))pendingAppChecks.delete(id);
+    const route=parseRoute();
+    const target=authorizationDialog()?.dataset.authorizingId || (route.page==='connections' && route.id);
+    const now=Date.now();
+    const interval=returned?2000:10000;
+    let due=null;
+    for(const c of pending){
+      if(c.workspace!==workspaceId)continue;
+      let tracker=pendingAppChecks.get(c.id);
+      if(!tracker){
+        // Allow an open sign-in longer; briefly retry other pending rows found on load.
+        tracker={last:0,until:now+(c.id===target?300000:30000)};
+        pendingAppChecks.set(c.id,tracker);
+      }
+      if(returned)tracker.until=Math.max(tracker.until,now+30000);
+      if(tracker.last && (now>tracker.until || now-tracker.last<interval))continue;
+      if(!due || tracker.last<due.tracker.last || (tracker.last===due.tracker.last && c.id===target))due={c,tracker};
+    }
+    // One due sign-in per tick keeps abandoned connections from flooding the provider.
+    if(!due)return;
+    const {c,tracker}=due;
+    tracker.last=now;
+    const result=await request('connection-check',{workspace:c.workspace,connectionId:c.id,pendingOnly:true}).catch(()=>null);
+    if(result && result.status!=='pending' && !terminal)await refresh();
+  }
+  function resumeChecks() {
+    if(document.hidden)return;
+    returningToConsole=true;
+    tick();
+  }
   async function tick() {
-    if(busy || stateInflight || terminal || document.hidden) return;
+    if(busy || managementBusy || stateInflight || terminal || document.hidden) return;
     stateInflight=true;
     try {
       if(state) for(const w of state.workspaces || []){
@@ -1179,6 +1248,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
         }
       }
       await refresh();
+      await checkPendingApp();
     } catch(e){network(e.message||'Cannot reach the Airport gateway.');}
     finally{stateInflight=false;}
   }
@@ -1193,7 +1263,12 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       if(!active)return;
     }
     await tick();
-    if(!terminal){setInterval(tick,3000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});}
+    if(!terminal){
+      setInterval(tick,3000);
+      document.addEventListener('visibilitychange',resumeChecks);
+      window.addEventListener('focus',resumeChecks);
+      window.addEventListener('pageshow',event=>{if(event.persisted)resumeChecks();});
+    }
   }
   init();
 })();
