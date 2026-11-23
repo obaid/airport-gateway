@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import agentIcons from '../dist/agent-icons.js';
 import { createEnrollment } from './enrollment.mjs';
+import { createBetaMeter } from './beta-usage.mjs';
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 
 export const secret = () => randomBytes(32).toString('base64url');
@@ -69,7 +70,7 @@ export function catalogToolRestriction(tool) {
   return null;
 }
 
-export function createStore(filename, {recoverOnOpen = true} = {}) {
+export function createStore(filename, {recoverOnOpen = true,publicBeta = false} = {}) {
   const db = new DatabaseSync(filename);
   db.exec(`
     PRAGMA journal_mode=WAL;
@@ -106,6 +107,8 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     CREATE INDEX IF NOT EXISTS requests_at_workspace ON requests(at,workspace);
     CREATE INDEX IF NOT EXISTS requests_allowed_provider_by_workspace ON requests(workspace,at)
       WHERE outcome='Allowed' AND providerCalled=1;
+    CREATE INDEX IF NOT EXISTS requests_metered_at ON requests(at)
+      WHERE outcome IN ('Allowed','Running') AND providerCalled=1;
     CREATE TABLE IF NOT EXISTS request_agent_clients(
       request_id TEXT PRIMARY KEY REFERENCES requests(id) ON DELETE CASCADE, clientType TEXT NOT NULL
     );
@@ -113,10 +116,15 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       request_id TEXT PRIMARY KEY REFERENCES requests(id) ON DELETE CASCADE,
       channel TEXT NOT NULL CHECK(channel IN ('mcp','http','owner')),
       request_json TEXT NOT NULL CHECK(json_valid(request_json)),
-      response_json TEXT CHECK(response_json IS NULL OR json_valid(response_json))
+      response_json TEXT CHECK(response_json IS NULL OR json_valid(response_json)),
+      provider_dispatched INTEGER CHECK(provider_dispatched IN (0,1)),decision_code TEXT
     );
   `);
   transaction(()=>{
+    const exchangeColumns=db.prepare('PRAGMA table_info(request_exchanges)').all().map(c=>c.name);
+    if (!exchangeColumns.includes('provider_dispatched'))
+      db.exec('ALTER TABLE request_exchanges ADD COLUMN provider_dispatched INTEGER CHECK(provider_dispatched IN (0,1))');
+    if (!exchangeColumns.includes('decision_code')) db.exec('ALTER TABLE request_exchanges ADD COLUMN decision_code TEXT');
     if (!db.prepare('PRAGMA table_info(workspace_agents)').all().some(c=>c.name==='clientType'))
       db.exec('ALTER TABLE workspace_agents ADD COLUMN clientType TEXT');
     if (!db.prepare('PRAGMA table_info(catalog_connections)').all().some(c=>c.name==='accessMode')) {
@@ -140,6 +148,7 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     db.exec("UPDATE requests SET outcome='Interrupted',detail='Airport restarted before the request completed.' WHERE outcome='Running'");
   });
   if(recoverOnOpen) recover();
+  const beta=publicBeta?createBetaMeter(db):null;
   const get = ws => db.prepare('SELECT * FROM workspaces WHERE id=?').get(ws) || fail('Unknown workspace.',404);
   const validGrant = row => Boolean(row.grantId && row.grantExpires > now());
   function revoke(ws) {
@@ -410,19 +419,27 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     db.prepare('DELETE FROM pairings WHERE ws=?').run(ws);
     return {token, expiresAt:iso(expires)};
   }
-  function insertLog(ws,actor,tool,outcome,called,detail,exchange,clientType) {
+  function insertLog(ws,actor,tool,outcome,called,detail,exchange,clientType,at=now(),dispatched=null) {
     const id = randomUUID();
-    db.prepare('INSERT INTO requests VALUES(?,?,?,?,?,?,?,?)').run(id,now(),ws,actor,tool,outcome,called?1:0,detail);
+    db.prepare('INSERT INTO requests VALUES(?,?,?,?,?,?,?,?)').run(id,at,ws,actor,tool,outcome,called?1:0,detail);
     if (clientType) db.prepare('INSERT INTO request_agent_clients(request_id,clientType) VALUES(?,?)').run(id,clientType);
     if (exchange) {
-      db.prepare('INSERT INTO request_exchanges(request_id,channel,request_json,response_json) VALUES(?,?,?,?)')
-        .run(id,exchange.channel,JSON.stringify(exchange.request),exchange.response == null ? null : JSON.stringify(exchange.response));
+      db.prepare('INSERT INTO request_exchanges(request_id,channel,request_json,response_json,provider_dispatched,decision_code) VALUES(?,?,?,?,?,?)')
+        .run(id,exchange.channel,JSON.stringify(exchange.request),exchange.response == null ? null : JSON.stringify(exchange.response),dispatched,exchange.decisionCode??null);
     }
     return id;
   }
   function log(...args) {
     return transaction(() => insertLog(...args));
   }
+  function startToolRequest(ws,actor,tool,detail,exchange,clientType,immediateDispatch=false) {
+    return transaction(()=>{
+      const at=now();
+      if(beta && exchange.channel!=='owner' && !beta.available(at))return null;
+      return insertLog(ws,actor,tool,'Running',true,detail,exchange,clientType,at,immediateDispatch?1:0);
+    });
+  }
+  const markSent=db.prepare('UPDATE request_exchanges SET provider_dispatched=1 WHERE request_id=?');
   function finish(id,outcome,detail,response) {
     return transaction(() => {
       db.prepare('UPDATE requests SET outcome=?,detail=? WHERE id=?').run(outcome,detail,id);
@@ -487,7 +504,8 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
   return {
     createWorkspace,createConnection,attachConnection,activateConnection,getConnection,listConnections,disableConnection,listToolPolicies,blockTool,setToolPolicy,applyConnectionAccess,resolveTool,approvedTools,
     issueAgentGrant,revokeAgentGrant,listAgentGrants,canUseCatalog,isGrantActive,...enrollment,
-    get,state,begin,activate,issue,issueConnectorGrant,pairStart,pairToken,approve,revoke,recover,log,finish,close:()=>db.close(),
+    get,state,begin,activate,issue,issueConnectorGrant,pairStart,pairToken,approve,revoke,recover,log,finish,startToolRequest,
+    markToolDispatch:id=>markSent.run(id),billingUsage:()=>beta?.usage(now())??null,close:()=>db.close(),
     getPolicy(ws){return get(ws).policy;},
     setPolicy(ws,policy,connectionId){
       get(ws);

@@ -377,9 +377,10 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     policies:{name:'Policies',title:'Policies'},
     activity:{name:'Activity',title:'Activity'},
     account:{name:'Account settings',title:'Account settings'},
+    billing:{name:'Billing',title:'Billing'},
     admin:{name:'Admin',title:'Platform admin'}
   };
-  const globalPage=page=>page==='account'||page==='admin';
+  const globalPage=page=>page==='account'||page==='admin'||page==='billing';
   window.AirportPages ||= {};
   let mountedKey='',mountedWorkspace='',mountedCatalog=null,mountedModule=null,componentSignature='',requestedAudit='';
   const panelIds=['setup-context','setup-guide','gate-map','workspace-summary','overview-feed','connections','agents','module-page','mail','muse','permissions','audit'];
@@ -562,6 +563,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       policies:'Choose which tools agents can use in '+w.name+'.',
       activity:'Requests and decisions recorded in '+w.name+'.',
       account:'Your profile and sign-in details.',
+      billing:'Your plan and app usage across all workspaces.',
       admin:'Accounts and usage across Airport.'
     };
     const account=r.page==='connections' && r.id==='pilot-gmail'?{toolkit:'gmail',status:w.status}:connection;
@@ -705,6 +707,11 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       return;
     }
     if(r.page==='admin'){renderModule(w,r,adminPage);return;}
+    if(r.page==='billing'){
+      if(window.AirportAccount?.hasBilling())renderModule(w,r,window.AirportBilling);
+      else renderShell(w,{page:'unavailable'});
+      return;
+    }
     if(r.page==='account'&&window.AirportAccount?.signedIn()){
       window.AirportAccount.settings(reveal('module-page'));
       return;
@@ -1353,7 +1360,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const link=e.target.closest('a[href]');
     const plainClick=e.button===0&&!e.defaultPrevented&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!e.altKey;
     if(link && plainClick && !link.hasAttribute('download') && (!link.target||link.target==='_self') &&
-      link.origin===location.origin && !link.hash && (link.pathname.startsWith('/w/')||link.pathname==='/account'||link.pathname==='/admin')){
+      link.origin===location.origin && !link.hash && (link.pathname.startsWith('/w/')||globalPage(link.pathname.slice(1)))){
       e.preventDefault();dismissRail();navigate(link.pathname+link.search);return;
     }
     const control=e.target.closest('[data-manage]');

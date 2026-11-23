@@ -15,8 +15,8 @@ publicBrandAssets.set('/assets/access-airfield.svg',['ui/access-airfield.svg','i
 const assets=new Map([
   ...publicBrandAssets,
   ['/', ['ui/index.html','text/html; charset=utf-8']],
-  ['/app.js', [['../dist/discovery-data.js','../dist/overview.js','ui/integrations.js','ui/connection-pages.js','ui/registries.js','ui/account.js','ui/onboarding.js','ui/workspace.js'],'text/javascript']],
-  ['/style.css', [['../dist/style.css','ui/workspace.css','ui/integrations.css','ui/connection-pages.css','ui/registries.css','ui/account.css','ui/access.css','ui/console-theme.css','ui/control-theme.css','ui/overview-theme.css','ui/onboarding.css'],'text/css']],
+  ['/app.js', [['../dist/discovery-data.js','../dist/overview.js','ui/integrations.js','ui/connection-pages.js','ui/registries.js','ui/account.js','ui/onboarding.js','ui/billing.js','ui/workspace.js'],'text/javascript']],
+  ['/style.css', [['../dist/style.css','ui/workspace.css','ui/integrations.css','ui/connection-pages.css','ui/registries.css','ui/account.css','ui/access.css','ui/console-theme.css','ui/control-theme.css','ui/overview-theme.css','ui/onboarding.css','ui/billing.css'],'text/css']],
   ['/assets/agent-icons.js',['../dist/agent-icons.js','text/javascript']],
   ['/assets/agent-icons.css',['../dist/agent-icons.css','text/css']],
   ...agentIcons.catalog.map(({key})=>['/assets/agents/'+key+'.png',['../dist/agents/'+key+'.png','image/png']]),
@@ -31,7 +31,7 @@ export function connectionHomeURL(workspace,id,status) {
 }
 export function isConsolePage(pathname) {
   const path=pathname.replace(/\/$/,'');
-  if(path==='/account')return true;
+  if(path==='/account'||path==='/billing')return true;
   // Public directory links open the app's detail page after the owner signs in.
   if(/^\/integrations\/[a-z0-9][a-z0-9_-]{0,255}$/.test(path))return true;
   const match=/^\/w\/[\w-]+(?:\/(.+))?$/.exec(path);

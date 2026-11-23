@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { catalogToolRestriction } from './store.mjs';
 import { matchesAccessMode } from './access-presets.mjs';
 import { ComposioError } from './composio.mjs';
+import { ALLOWANCE_DETAIL } from './beta-usage.mjs';
 
 const MODERN = '2026-07-28';
 const HANDSHAKE = ['2025-11-25', '2025-06-18', '2025-03-26'];
@@ -185,9 +186,9 @@ async function runCatalogTool(store,getCatalog,grant,tool,transport,args) {
     request.operation={slug:policy.slug,version:policy.version};
   }
   const exchange={channel,request,response:null};
-  function deny(detail) {
-    const result={outcome:'Blocked',detail,providerCalled:false};
-    store.log(ws,grant.actor,tool,'Blocked',false,detail,{...exchange,response:{outcome:'Blocked'}},grant.clientType);
+  function deny(detail,code) {
+    const result={outcome:'Blocked',detail,providerCalled:false,...(code&&{code})};
+    store.log(ws,grant.actor,tool,'Blocked',false,detail,{...exchange,decisionCode:code,response:{outcome:'Blocked',...(code&&{code})}},grant.clientType);
     return result;
   }
   if (!catalogAccess) return deny('This credential has no catalog access.');
@@ -199,7 +200,8 @@ async function runCatalogTool(store,getCatalog,grant,tool,transport,args) {
     const latest=store.resolveTool(ws,tool);
     return store.canUseCatalog(grant) && latest?.revision===policy.revision && latest.account===policy.account;
   };
-  const logId=store.log(ws,grant.actor,tool,'Running',true,'Verifying the approved provider tool and connected account.',exchange,grant.clientType);
+  const logId=store.startToolRequest(ws,grant.actor,tool,'Verifying the approved provider tool and connected account.',exchange,grant.clientType);
+  if(!logId)return deny(ALLOWANCE_DETAIL,'account_action_limit');
   let dispatched=false,result;
   try {
     // The adapter resolves this exact version and verifies account ownership.
@@ -210,6 +212,7 @@ async function runCatalogTool(store,getCatalog,grant,tool,transport,args) {
         if (!current() || metadata?.slug!==policy.slug || metadata?.version!==policy.version ||
           metadata?.toolkit!==policy.toolkit || catalogToolRestriction(metadata) || !matchesAccessMode(policy.presetClass,metadata) ||
           !isDeepStrictEqual(metadata.inputSchema,policy.inputSchema)) throw new ChangedApproval();
+        store.markToolDispatch(logId);
         dispatched=true;
       }});
     if (!dispatched || !current()) throw new ChangedApproval();
@@ -226,6 +229,7 @@ async function runCatalogTool(store,getCatalog,grant,tool,transport,args) {
 }
 
 function safeRunResult(tool, result) {
+  if (result?.code==='account_action_limit') return {status:429,data:{error:ALLOWANCE_DETAIL,code:result.code}};
   if (tool === SEND || result?.outcome === 'Blocked') {
     return { status: 403, data: { error: 'Airport policy blocked this tool.' } };
   }
@@ -282,9 +286,9 @@ export function createToolRunner({store,getProvider,getCatalog=getProvider}) {
       render:result => result
     };
     const exchange = {channel:context.channel,request:context.request,response:null};
-    function deny(detail) {
-      const result = {outcome:'Blocked',providerCalled:false,detail};
-      store.log(ws,actor,tool,'Blocked',false,detail,{...exchange,response:context.render(result)},grant.clientType);
+    function deny(detail,code) {
+      const result = {outcome:'Blocked',providerCalled:false,detail,...(code&&{code})};
+      store.log(ws,actor,tool,'Blocked',false,detail,{...exchange,decisionCode:code,response:context.render(result)},grant.clientType);
       return result;
     }
     const expired = () => !store.isGrantActive(grant);
@@ -294,7 +298,8 @@ export function createToolRunner({store,getProvider,getCatalog=getProvider}) {
     if (row.policy !== 'Allow') return deny('Workspace policy blocks inbox counts. The request stopped at Airport.');
     const provider = getProvider();
     if (row.status !== 'active' || !row.account || !provider) return deny('A verified Gmail connection and configured Composio key are required.');
-    const logId = store.log(ws,actor,tool,'Running',true,'Requested the INBOX label totals through Composio.',exchange,grant.clientType);
+    const logId = store.startToolRequest(ws,actor,tool,'Requested the INBOX label totals through Composio.',exchange,grant.clientType,true);
+    if(!logId)return deny(ALLOWANCE_DETAIL,'account_action_limit');
     let result;
     try {
       const {total,unread} = await provider.counts(row.owner,row.account);

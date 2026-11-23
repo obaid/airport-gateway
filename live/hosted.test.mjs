@@ -113,7 +113,7 @@ test('owner access verifies the signature, issuer, audience, application-token t
     await token('owner',{nbf:Math.floor(Date.now()/1000)+90}),await token('owner',{},otherKey),'unsigned.claims.test'
   ];
   for (const assertion of wrong) assert.equal((await app.owner(assertion)).status,401);
-  for (const path of ['/','/w/work/overview','/account','/api/state','/assets/icons.js','/oauth/done']) {
+  for (const path of ['/','/w/work/overview','/account','/billing','/api/billing','/api/state','/assets/icons.js','/oauth/done']) {
     assert.equal((await app.send(ownerHost,path,{'cf-access-authenticated-user-email':'pretend@example.com'})).status,401);
   }
   assert.deepEqual(readdirSync(join(dir,'tenants')),[]);
@@ -125,7 +125,7 @@ test('owner access verifies the signature, issuer, audience, application-token t
 
 test('owners retain isolated state across restarts and bearer-only data reads bind to one existing tenant',async t=>{
   const dir = mkdtempSync(join(tmpdir(),'airport-hosted-'));
-  const config = readHostedConfig(env(dir));
+  const config = readHostedConfig({...env(dir),AIRPORT_PUBLIC_BETA:'1'});
   let app = await listen(config);
   t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
   const a = await token('owner-a'), b = await token('owner-b');
@@ -152,6 +152,18 @@ test('owners retain isolated state across restarts and bearer-only data reads bi
   assert.equal((await app.send(agentHost,pathB+'/api/gmail/inbox-counts',auth)).status,401);
   const valid = await app.send(agentHost,pathA+'/api/gmail/inbox-counts',auth);
   assert.deepEqual(valid.body,{total:12,unread:4});
+  const billing=(await app.owner(a,'/api/billing')).body;
+  assert.equal(billing.limit,1000);
+  assert.equal(billing.used,billing.status==='upcoming'?0:1);
+  assert.equal(billing.byWorkspace.find(row=>row.id==='work').used,billing.used);
+  assert(billing.byWorkspace.some(row=>row.name==='Only A'));
+  const billingB=(await app.owner(b,'/api/billing')).body;
+  assert.equal(billingB.used,0);
+  assert(!billingB.byWorkspace.some(row=>row.name==='Only A'));
+  assert.equal((await app.owner(b,'/api/billing?tenant=other')).status,404);
+  assert.equal((await app.send(agentHost,pathA+'/api/billing',auth)).status,404);
+  assert.equal((await app.send(ownerHost,'/api/billing',auth)).status,401);
+  assert.equal((await app.owner(await token('unregistered-billing'),'/api/billing')).status,403);
   const setup = await app.send(agentHost,pathA+'/airport/connect');
   assert.equal(setup.status,200);
   assert(setup.body.includes(stateA.publicURL+'/mcp'));
@@ -525,7 +537,7 @@ test('Airport email login preserves verified accounts, host isolation, workspace
   const owner=await authenticate(email);
   assert.equal((await app.send(ownerHost,'/login',owner)).headers.location,'/');
   const shell=await app.send(ownerHost,'/',owner), signIn=await app.send(ownerHost,'/login');
-  for(const path of ['/account','/integrations/github','/w/work','/w/work/overview','/w/work/integrations?app=github',
+  for(const path of ['/account','/billing','/integrations/github','/w/work','/w/work/overview','/w/work/integrations?app=github',
     '/w/work/connections/pilot-gmail/tools/advanced','/w/personal/policies?view=advanced','/w/work/activity/record-id','/w/personal/setup']){
     const guest=await app.send(ownerHost,path),signedIn=await app.send(ownerHost,path,owner);
     assert.equal(guest.status,200,path);

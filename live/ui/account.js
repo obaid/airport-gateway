@@ -109,6 +109,7 @@
     find('#account-switch').setAttribute('aria-label','Account menu for '+account.displayName);
     find('#local-account').hidden = true;
     find('#account-dock').hidden = false;
+    find('#account-billing').hidden = session.publicBeta!==true;
     const platform=find('#platform-nav');
     platform.hidden=!isPlatformAdmin();
     if(platform.hidden)platform.replaceChildren();
@@ -235,7 +236,7 @@
     }catch(error){
       const panel=gate('Open your Airport account','We couldn’t load your sign-in details. Sign in again or retry the connection.');
       const actions=element('div','acct-actions');
-      const signInPath=location.pathname==='/account'||location.pathname.startsWith('/w/')
+      const signInPath=location.pathname==='/account'||location.pathname==='/billing'||location.pathname.startsWith('/w/')
         ? location.pathname+location.search : '/login'+location.hash;
       actions.append(link('Sign in',signInPath,'btn primary'),button('Retry','',()=>location.reload()));
       panel.append(actions);return false;
@@ -346,5 +347,5 @@
     settingsHost=root;const inner=element('div','acct-settings');root.replaceChildren(inner);
     profile(inner);if(session.signupMode==='invite' && session.account.role==='admin')invitations(root);
   }
-  window.AirportAccount = {connect,isPlatformAdmin,accountId:()=>session?.account?.id,signedIn:()=>Boolean(session?.account),settings,unmount(){settingsHost=null;createdInvite=null;closeMenu();}};
+  window.AirportAccount = {connect,isPlatformAdmin,hasBilling:()=>session?.publicBeta===true && Boolean(session?.account),accountId:()=>session?.account?.id,signedIn:()=>Boolean(session?.account),settings,unmount(){settingsHost=null;createdInvite=null;closeMenu();}};
 })();

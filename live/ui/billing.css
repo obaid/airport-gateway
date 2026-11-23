@@ -1,0 +1,26 @@
+.bl-page { display:grid; gap:18px; max-width:880px; min-width:0 }
+.bl-page h2,.bl-page h3,.bl-page p { margin:0 }
+.bl-page h2 { font:700 clamp(1.3rem,2vw,1.65rem)/1.14 var(--display); letter-spacing:-.04em }
+.bl-plan { display:flex; justify-content:space-between; align-items:center; gap:24px; padding:clamp(22px,3.5vw,36px); border-radius:12px; background:#17382b; color:#f4f6e8 }
+.bl-plan h2 { font-size:clamp(1.6rem,2.9vw,2.3rem); margin:8px 0 }
+.bl-plan p:not(.bl-label),.bl-price span { color:#d7e3d3; font-size:.9rem; line-height:1.5 }
+.bl-label { color:#d6f5a6; font:600 .78rem/1.4 var(--mono) }
+.bl-price { display:grid; text-align:right; justify-items:end; flex:0 0 auto }
+.bl-price strong { font:720 clamp(2.3rem,4vw,3.3rem)/1.1 var(--display); letter-spacing:-.05em }
+.bl-panel { padding:clamp(20px,3vw,30px); border:1px solid var(--line); border-radius:12px; background:var(--panel) }
+.bl-heading { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px }
+.bl-heading p,.bl-note,.bl-footer { color:var(--muted); font-size:.88rem; line-height:1.5 }
+.bl-heading p { margin-top:5px }
+.bl-count { margin:21px 0 6px; color:var(--muted); font-size:.94rem }
+.bl-count strong { color:var(--ink); font:700 2rem/1 var(--display); margin-right:.2em; font-variant-numeric:tabular-nums }
+.bl-note { max-width:68ch }
+.bl-panel h3 { margin:24px 0 6px; font-size:.94rem }
+.bl-workspaces { margin:0; padding:0; list-style:none }
+.bl-workspaces li { display:flex; align-items:center; justify-content:space-between; gap:16px; border-top:1px solid var(--line); padding:10px 0; font-size:.9rem; overflow-wrap:anywhere }
+.bl-workspaces strong { font:550 .9rem/1.4 var(--mono) }
+.bl-footer a { display:inline-flex; gap:4px; align-items:center; color:var(--ink); text-underline-offset:3px }
+.bl-error { display:flex; align-items:center; justify-content:space-between; gap:12px }
+@media(max-width:550px) {
+  .bl-plan { align-items:start; flex-direction:column; gap:16px }
+  .bl-price { justify-items:start;text-align:left }
+}

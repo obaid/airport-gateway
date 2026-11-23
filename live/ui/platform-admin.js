@@ -57,6 +57,32 @@
       <div class="pa-call-total"><strong>${numbers.format(totals.successfulToolCalls)}</strong><span>Total calls</span></div></header>${list}</section>`;
   }
 
+  function betaUsage(ctx,beta) {
+    if(!beta)return '';
+    const date=new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/Los_Angeles'});
+    const fmt=n=>numbers.format(n);
+    const cell=(label,value)=>'<div><dt>'+label+'</dt><dd>'+fmt(value)+'</dd></div>';
+    const facts=cell('Successful app actions',beta.used)+cell('Provider tool attempts',beta.providerAttempts)+
+      cell('Failed agent requests',beta.agentFailures)+cell('Other blocked requests',beta.policyDenials)+cell('Limit denials',beta.limitDenials)+
+      cell('Accounts with usage',beta.activeAccounts)+cell('Accounts over 100 actions',beta.over100)+
+      cell('Accounts at 80–99%',beta.nearLimit)+cell('Accounts at limit',beta.atLimit);
+    const e=beta.engagement;
+    const observed=(n,d)=>d ? fmt(n)+' / '+fmt(d)+' ('+Math.round(100*n/d)+'%)' : 'Awaiting eligible accounts';
+    const cohorts=e?'<h3>Beta signups</h3><dl class="pa-cohorts">'+cell('New accounts',e.signups)+
+      '<div><dt>First app action within 24 hours</dt><dd>'+observed(e.activatedWithin24h,e.activationEligible)+'</dd></div>'+
+      '<div><dt>Active again in week two</dt><dd>'+observed(e.returnedWeekTwo,e.weekTwoEligible)+'</dd></div></dl>'+
+      '<p class="pa-fine">Activation includes signups at least 24 hours old. Week two includes accounts active in their first week with two full weeks observed.</p>':'';
+    const list=beta.topAccounts.length?'<table class="pa-beta-table"><thead><tr><th>Account ID</th><th>Actions</th><th>Provider attempts</th><th>Limit denials</th></tr></thead><tbody>'+
+      beta.topAccounts.map(row=>'<tr><th scope="row">'+ctx.escape(row.account)+'</th><td>'+fmt(row.used)+'</td><td>'+fmt(row.providerAttempts)+'</td><td>'+fmt(row.limitDenials)+'</td></tr>').join('')+'</tbody></table>':
+      '<p class="pa-fine">Accounts appear here after their first recorded usage.</p>';
+    const daily=beta.daily.length? '<details class="pa-daily"><summary>Daily usage</summary><table class="pa-beta-table"><thead><tr><th>Date (Pacific)</th><th>App actions</th><th>Provider attempts</th></tr></thead><tbody>'+
+      beta.daily.map(row=>'<tr><th scope="row">'+date.format(new Date(row.day+'T12:00:00Z'))+'</th><td>'+fmt(row.used)+'</td><td>'+fmt(row.providerAttempts)+'</td></tr>').join('')+'</tbody></table></details>':'';
+    return '<section class="pa-panel pa-beta"><header><h2>Public beta usage</h2><p>'+
+      date.formatRange(new Date(beta.start),new Date(Date.parse(beta.end)-1))+' · '+fmt(beta.limit)+' successful app actions per account</p></header>'+
+      '<div class="pa-beta-body"><dl class="pa-metrics">'+facts+'</dl><p class="pa-fine">Provider tool attempts include failed executions and console tests. Provider bills can also include authorization checks and other charges.</p>'+
+      daily+cohorts+'<h3>Highest-usage accounts</h3>'+list+'</div></section>';
+  }
+
   async function refresh(view) {
     if (view.loading || !view.ctx.isCurrent()) return;
     const {root,status,button,content,ctx} = view;
@@ -69,7 +95,7 @@
       if (!root.isConnected || !ctx.isCurrent()) return;
       const {totals,window:period} = data;
       const date = new Date(data.asOf);
-      const html = inventory(ctx,totals)+`<div class="pa-rankings">${integrations(ctx,data.integrations,totals.connections)}${agents(ctx,data.bots,Number(period.days))}</div>`+toolUsage(ctx,data);
+      const html = inventory(ctx,totals)+betaUsage(ctx,data.beta)+`<div class="pa-rankings">${integrations(ctx,data.integrations,totals.connections)}${agents(ctx,data.bots,Number(period.days))}</div>`+toolUsage(ctx,data);
       status.textContent = 'Updated '+timestamp.format(date);
       content.innerHTML = html;
       button.textContent = 'Refresh';

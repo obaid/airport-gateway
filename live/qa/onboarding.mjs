@@ -200,6 +200,25 @@ export async function firstWorkspaceJourney({ browser, origin, gateway, githubAu
     await page.goto(personal + '/overview');
     await page.getByRole('heading', {name:'Workspace overview', exact:true}).waitFor();
     assert.equal(await stage('connect').count(), 0);
+    await page.getByRole('button',{name:'Account menu for Casey'}).click();
+    await page.getByRole('link',{name:'Billing',exact:true}).click();
+    await page.waitForURL(origin+'/billing');
+    await page.getByRole('heading',{name:'Account usage'}).waitFor();
+    const usage=await (await context.request.get(origin+'/api/billing')).json();
+    const expected=usage.status==='upcoming'?0:1;
+    assert.equal(usage.used,expected);
+    assert.equal(await page.locator('.bl-count strong').textContent(),String(expected));
+    assert.equal(await page.locator('.bl-workspaces li').filter({hasText:'Personal'}).locator('strong').textContent(),String(expected));
+    await page.getByRole('button',{name:'Refresh',exact:true}).click();
+    await page.reload();
+    await page.getByRole('heading',{name:'Account usage'}).waitFor();
+    if(process.env.AIRPORT_BETA_SCREENSHOTS){
+      await page.evaluate(()=>document.fonts.ready);
+      await page.screenshot({path:join(process.env.AIRPORT_BETA_SCREENSHOTS,'beta-billing.png'),animations:'disabled'});
+      await page.setViewportSize({width:390,height:844});
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+      await page.screenshot({path:join(process.env.AIRPORT_BETA_SCREENSHOTS,'beta-billing-mobile.png'),animations:'disabled'});
+    }
     assert.deepEqual(errors, []);
   } finally {
     await context.close();

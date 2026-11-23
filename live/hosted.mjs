@@ -63,8 +63,11 @@ export function readHostedConfig(env = process.env) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error('Invalid listening PORT.');
   const maintenance = env.AIRPORT_MAINTENANCE ?? '0';
   if (!['0','1'].includes(maintenance)) throw Error('Set AIRPORT_MAINTENANCE to 0 or 1.');
+  const publicBeta = env.AIRPORT_PUBLIC_BETA ?? (owner.origin==='https://app.airport.so'?'1':'0');
+  if (!['0','1'].includes(publicBeta)) throw Error('Set AIRPORT_PUBLIC_BETA to 0 or 1.');
   return {
     ownerOrigin:owner.origin,agentBase:agent.href.replace(/\/$/,''),
+    publicBeta:publicBeta==='1',
     authMode,emailConfig,renderIngress:env.RENDER==='true',issuer:issuer?.origin,audience:env.CF_ACCESS_AUD?.trim(),secret,dataDir:env.AIRPORT_HOSTED_DATA_DIR,
     apiKey:env.COMPOSIO_API_KEY.trim(),gmailConfig:authConfigs.gmail || env.COMPOSIO_GMAIL_AUTH_CONFIG_ID?.trim() || undefined,authConfigs,verifierPath,
     host:env.HOST || '127.0.0.1',port,maintenance:maintenance === '1',signupMode,bootstrapEmail,bootstrapTenant
@@ -108,7 +111,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
   if (!lstatSync(dir).isDirectory()) throw Error('The tenant storage path must be a directory.');
   chmodSync(dir,0o700);
   const accounts=createAccounts(join(config.dataDir,'accounts.sqlite3'),config);
-  const platformOverview=createPlatformOverview(dir,()=>accounts.countUsers());
+  const platformOverview=createPlatformOverview(dir,()=>accounts.countUsers(),config.publicBeta);
   const emailAuth = config.authMode==='email' ? createEmailAuth(join(config.dataDir,'authentication.sqlite3'),{
     secret:config.secret,sendCode:sendCode || createCodeSender(config.emailConfig),
     verifiedIdentity(email) {
@@ -148,7 +151,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
       const file = join(dir,tenant+'.sqlite3');
       const stat = lstatSync(file,{throwIfNoEntry:false});
       if ((!canCreate && !stat) || (stat && !stat.isFile())) return null;
-      const store = createStore(file);
+      const store = createStore(file,{publicBeta:config.publicBeta});
       chmodSync(file,0o600);
       const publicBase = config.agentBase+'/gateway/'+tenant;
       const run = createToolRunner({store,...options});
@@ -215,7 +218,7 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
   const isPlatformAdmin=(person,account)=>Boolean(config.bootstrapEmail && account && account.email===config.bootstrapEmail &&
     person.email===config.bootstrapEmail && (!config.bootstrapTenant || config.bootstrapTenant===person.tenant));
   const session=(person,account)=>({identity:{email:person.email,accountKey:person.tenant},account,
-    isPlatformAdmin:isPlatformAdmin(person,account),signupMode:config.signupMode,authMode:config.authMode});
+    isPlatformAdmin:isPlatformAdmin(person,account),publicBeta:config.publicBeta,signupMode:config.signupMode,authMode:config.authMode});
   async function authAPI(req,res,target) {
     if (req.method!=='POST') return errorResponse(res,404);
     const form=await readOwnerBody(req,config.ownerOrigin);
@@ -327,6 +330,10 @@ export function createHostedGateway(config, {fetchKeys,provider,catalog,sendCode
       entry = acquire(tenant,!isVerifier);
       if (!entry && isVerifier) return errorResponse(res,409,'This owner has no pending Airport connection.');
       if (!entry) return errorResponse(res,500);
+      if(pathname==='/api/billing'){
+        if(!config.publicBeta || target!==pathname || req.method!=='GET')return errorResponse(res,404);
+        return sendJSON(res,200,entry.store.billingUsage());
+      }
       if (isVerifier) return await verifyConnection(req,res,entry.store);
       return await entry.owner(req,res);
     } catch(error) {

@@ -42,7 +42,7 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     gateway=createHostedGateway(readHostedConfig({
       AIRPORT_OWNER_ORIGIN:origin,AIRPORT_AGENT_BASE:'https://mcp.example.test',
       AIRPORT_HOSTED_DATA_DIR:dir,AIRPORT_TENANT_SECRET:Buffer.alloc(32,10).toString('base64url'),
-      AIRPORT_AUTH_MODE:'email',AIRPORT_SIGNUP_MODE:'open',AIRPORT_BOOTSTRAP_OWNER_EMAIL:'admin@example.test',AIRPORT_EMAIL_ACCOUNT_ID:'a'.repeat(32),
+      AIRPORT_AUTH_MODE:'email',AIRPORT_SIGNUP_MODE:'open',AIRPORT_PUBLIC_BETA:'1',AIRPORT_BOOTSTRAP_OWNER_EMAIL:'admin@example.test',AIRPORT_EMAIL_ACCOUNT_ID:'a'.repeat(32),
       AIRPORT_EMAIL_FROM:'signin@example.test',AIRPORT_EMAIL_API_TOKEN:'fixture',COMPOSIO_API_KEY:'fixture'
     }),{
       sendCode:async message=>{delivered=message;},
@@ -433,6 +433,17 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         assert.equal(overview.totals.connections,3);
         await admin.getByRole('heading',{name:'Platform admin',exact:true}).waitFor();
         await admin.getByText('Registered users',{exact:true}).waitFor();
+        await admin.getByRole('heading',{name:'Public beta usage'}).waitFor();
+        assert.equal(overview.beta.limit,1000);
+        assert.ok(overview.beta.engagement);
+        if(overview.beta.daily.length){
+          await admin.getByText('Daily usage',{exact:true}).click();
+          await admin.getByRole('columnheader',{name:'Date (Pacific)'}).waitFor();
+        }
+        if(process.env.AIRPORT_BETA_SCREENSHOTS){
+          await admin.evaluate(()=>document.fonts.ready);
+          await admin.screenshot({path:join(process.env.AIRPORT_BETA_SCREENSHOTS,'beta-admin.png'),animations:'disabled'});
+        }
         await admin.reload();
         await admin.getByText('Registered users',{exact:true}).waitFor();
         assert.equal(admin.url(),origin+'/admin');

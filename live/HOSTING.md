@@ -46,6 +46,16 @@ To bind the administrator, set `AIRPORT_BOOTSTRAP_OWNER_EMAIL` to the verified a
 
 The configured owner can open **Admin** at `/admin` to see registered users, workspaces, active connections, and active agent credentials. The integration ranking counts active connections. Agent and tool rankings count successful calls to connected apps in the past 30 days, using retained activity that identifies the caller as an agent. Each refresh reads aggregate counts from the platform’s own databases.
 
+### Public beta
+
+The public service includes 1,000 successful agent actions per account from November 22 through December 21, 2026 (Pacific). The allowance is shared by all workspaces and agents. The signed-in account menu links to `/billing`, which shows usage by workspace. Reaching the allowance pauses further agent actions that would call an app. Discovery, managing permissions and reviewing Activity stay available. While free access continues after the launch period, the allowance renews in 30-day windows. Paid service requires a separate opt-in.
+
+The hosted entry point enables the public beta on `https://app.airport.so`. Set `AIRPORT_PUBLIC_BETA=1` to exercise the same limits on a staging host. Other hosts default to their existing unrestricted configuration.
+
+The administrator's beta report keeps the original launch dates for analysis. Activation measures new accounts that made a successful agent request within 24 hours, among signups with a full day of observation. Week-two retention measures people who used an agent in their first week and used it again in their second, among signups with two complete weeks of observation. Accounts that never connect an app are included in the activation denominator.
+
+The customer allowance counts successful agent actions. When reviewing operating costs, use the provider-attempt count to help reconcile Composio project usage and its billing dashboard. Owner tests and dispatched failures can incur costs. Setup verification, separately priced tools and service fees can also affect the invoice. Enforcing a dollar budget for the shared Composio project requires its own spending controls.
+
 Use Node.js 22.16 or later with built-in `node:sqlite` support. From the repository root, install the locked dependency and run the isolated tests.
 
 ```sh
