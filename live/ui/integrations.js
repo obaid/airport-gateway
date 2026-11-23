@@ -13,11 +13,7 @@
     const base=directory.apps[row.slug]||{};
     return {...base,...row,categories:row.categories||base.categories||[],description:row.description||base.description||''};
   }
-  const mark=(ctx,a,size=26)=>{
-    const src=directory.marks[a.slug];
-    if(typeof src==='string'&&src.startsWith('data:image/png;base64,'))return `<span class="dir-logo real-mark"><img width="${size}" height="${size}" alt="" src="${ctx.escape(src)}"></span>`;
-    return `<span class="dir-logo dir-initial" aria-hidden="true">${ctx.escape(String(a.name||a.slug).slice(0,2).toUpperCase())}</span>`;
-  };
+  const mark=(ctx,a,size=28)=>`<span class="dir-logo real-mark" aria-hidden="true">${ctx.mark(a.slug,size,a)}</span>`;
   function card(ctx,a){
     const metadata=[Number.isFinite(a.toolsCount)?a.toolsCount.toLocaleString()+(a.toolsCount===1?' tool':' tools'):'',auth(a)].filter(Boolean).join(' · ');
     return `<a class="dir-card" href="${ctx.escape(ctx.href('integrations?app='+encodeURIComponent(a.slug)))}">${mark(ctx,a)}<span><strong>${ctx.escape(a.name||a.slug)}</strong><small>${ctx.escape(metadata)}</small></span>${ctx.icon('chevron-right',14)}</a>`;
@@ -145,7 +141,7 @@
       if(!current())return;
       let linked=accounts(ctx,slug);
       const reference=known?`<a class="text-btn int-reference" href="https://docs.composio.dev/toolkits/${encodeURIComponent(slug)}" target="_blank" rel="noopener noreferrer">Tool reference ${icon('arrow-up-right',14)}</a>`:'';
-      el.innerHTML=`<div class="int-detail"><section class="panel integration-detail"><div class="panel-head"><h2>${known?'Integration details':esc(a.name||a.slug)}</h2>${reference}</div><div class="panel-inner">
+      el.innerHTML=`<div class="int-detail"><section class="panel integration-detail"><div class="panel-head"><div class="int-app-heading">${mark(ctx,a)}<h2>${known?'Integration details':esc(a.name||a.slug)}</h2></div>${reference}</div><div class="panel-inner">
         ${a.description?`<p class="app-description">${esc(a.description)}</p>`:''}<dl class="facts"><div><dt>Available tools</dt><dd>${Number.isFinite(a.toolsCount)?a.toolsCount.toLocaleString():'See connected tools'}</dd></div>
         <div><dt>Authentication</dt><dd>${esc(auth(a))}</dd></div><div><dt>Toolkit</dt><dd><code>${esc(a.slug)}</code></dd></div></dl>
         <button class="button primary" type="button" data-connect-integration ${live?'':'disabled'}>${icon('plus',15)}Connect account</button>

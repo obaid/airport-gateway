@@ -23,10 +23,7 @@
     return ['gmail_inbox_counts','gmail_send_email'].includes(row.tool)?'Gmail':'Airport';
   }
   function mark(ctx,key) {
-    const url=window.AirportDiscovery?.marks?.[key];
-    if(typeof url==='string'&&url.startsWith('data:image/png;base64,'))
-      return `<span class="entity-mark rg-mark native"><img alt="" src="${ctx.escape(url)}" width="29" height="29"></span>`;
-    return `<span class="entity-mark rg-mark">${ctx.logo(key,28)}</span>`;
+    return `<span class="entity-mark rg-mark native">${ctx.logo(key,28)}</span>`;
   }
   function connections(ctx,logs) {
     const {workspace:w,escape:esc,icon}=ctx;

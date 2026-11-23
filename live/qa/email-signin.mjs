@@ -11,6 +11,7 @@ import { chromium } from 'playwright-core';
 import { createHostedGateway, readHostedConfig } from '../hosted.mjs';
 import { firstWorkspaceJourney } from './onboarding.mjs';
 import { checkAccountRecovery } from './account-recovery.mjs';
+import { checkIntegrationIcons } from './integration-icons.mjs';
 
 test('a customer signs in, creates an account, switches workspaces and signs out in Chromium',async t=>{
   const dir=mkdtempSync(join(tmpdir(),'airport-browser-'));
@@ -118,6 +119,9 @@ test('a customer signs in, creates an account, switches workspaces and signs out
 
     await t.test('a gateway interruption during account loading preserves the signed-in integrations link',
       ()=>checkAccountRecovery(ctx,personal+'/integrations'));
+
+    await t.test('the integrations picker loads app logos and recovers from missing artwork',
+      ()=>checkIntegrationIcons(ctx,personal+'/integrations'));
 
     await t.test('temporary gateway failures recover on the Personal integrations page',async()=>{
       const view=await ctx.newPage();

@@ -1,4 +1,7 @@
 .int-browser,.int-detail { display:grid; min-width:0; gap:18px }
+.int-app-heading { display:flex; align-items:center; gap:10px }
+.toolkit-logo { display:block; object-fit:contain; flex:none }
+.dir-logo .app-monogram { width:100%; height:100%; border-radius:inherit }
 .int-browser .popular-section { margin:0 0 8px }
 .int-browser .dir-card { color:var(--ink) }
 .int-browser .dir-card>span:nth-child(2) { min-width:0 }

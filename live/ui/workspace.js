@@ -282,14 +282,28 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   const toolkitName=slug=>toolkitNames[slug] || prettyName(slug);
   const toolCount=c=>(c.tools||[]).filter(t=>t.allowed===true).length;
   const manageBtn=(action,label,id='',primary=false)=>`<button class="button${primary?' primary':''}" type="button" data-manage="${action}" data-id="${esc(id)}">${esc(label)}</button>`;
-  const mark=(key,size=25)=>{
+  const providerLogo=/^https:\/\/logos\.composio\.dev\/api\/[a-z0-9_][a-z0-9_-]{0,255}$/i;
+  const mark=(key,size=25,item)=>{
     const aliases={googledrive:'drive',googlecalendar:'calendar'};
     const known=['gmail','calendar','slack','notion','drive','instagram','yahoo'];
     const code=String(key||'').toLowerCase();
     if(code==='gateway') return art.brand(size);
+    const app=window.AirportDiscovery?.apps[code];
+    const initials=String(item?.name||app?.name||prettyName(code)||'A').slice(0,2).toUpperCase();
+    const url=app?.slug===code?'/assets/integrations/'+encodeURIComponent(code)+'.webp':
+      typeof item?.logo==='string' && providerLogo.test(item.logo)?item.logo:null;
+    if(url)return `<img class="toolkit-logo" width="${size}" height="${size}" alt="" referrerpolicy="no-referrer" data-app-initials="${esc(initials)}" src="${esc(url)}">`;
     if(known.includes(aliases[code]||code)) return art.logo(aliases[code]||code,size);
-    return `<span class="app-monogram" aria-hidden="true">${esc((prettyName(code)||'A').slice(0,2))}</span>`;
+    return `<span class="app-monogram" aria-hidden="true">${esc(initials)}</span>`;
   };
+  document.addEventListener('error',event=>{
+    const img=event.target;
+    if(!(img instanceof HTMLImageElement) || !img.hasAttribute('data-app-initials'))return;
+    const initials=document.createElement('span');
+    initials.className='app-monogram';initials.setAttribute('aria-hidden','true');
+    initials.textContent=img.dataset.appInitials;
+    img.replaceWith(initials);
+  },true);
   let graphWorkspace='',traceId='',graphObserver,graphFrame=0;
   const connectionPath=(id,status)=>'#connections/'+encodeURIComponent(id)+'/'+(status==='active'?'tools':'settings');
   function gatewayObjects(w) {
@@ -1082,7 +1096,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   function paintDirectory(v){
     const tools=v.type==='tools';
     const items=v.items.map((item,index)=>{
-      if(!tools) return `<button class="directory-app" type="button" data-manage="pick-toolkit" data-id="${index}">${mark(item.slug)}<span><strong>${esc(item.name || toolkitName(item.slug))}</strong><small>${esc(item.description || item.slug)}</small></span>${icon('chevron-right',15)}</button>`;
+      if(!tools) return `<button class="directory-app" type="button" data-manage="pick-toolkit" data-id="${index}">${mark(item.slug,25,item)}<span><strong>${esc(item.name || toolkitName(item.slug))}</strong><small>${esc(item.description || item.slug)}</small></span>${icon('chevron-right',15)}</button>`;
       const unsupported=item.unsupportedReason;
       const otherPin=item.approvedVersion && item.approvedVersion!==item.version;
       const pinInfo=otherPin?`<small>Approved version · ${esc(item.approvedVersion)}</small>`:'';

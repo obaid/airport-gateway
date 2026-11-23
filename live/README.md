@@ -21,6 +21,8 @@ To refresh the public marketing directory, run `node live/export-public-integrat
 
 Airport supplies the Composio project key server-side. The browser never receives it. With Gmail, Composio’s managed OAuth app can handle Google consent; Airport can instead pin an operator-configured auth template for branded consent or a different scope set. Each authorized account has a separate connection in its workspace. Provider-specific credentials for apps that use API keys are entered in the provider authorization flow.
 
+When the published app list in `dist/toolkits.json` changes, run `python3 live/refresh-integration-icons.py` from the repository root to refresh its bundled logos. This maintenance step uses Pillow, curl, and rsvg-convert. Commit the resulting WebP files with the directory update.
+
 For a hosted multi-owner installation, see [Hosting](HOSTING.md). For a local installation, Node.js 24.2 or later and `cloudflared` support the private owner console and optional temporary agent endpoint.
 
 ```sh

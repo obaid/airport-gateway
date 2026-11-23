@@ -1,4 +1,5 @@
 import {readFile} from 'node:fs/promises';
+import {readdirSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import agentIcons from '../dist/agent-icons.js';
@@ -7,11 +8,16 @@ import {createCatalogActions} from './owner-catalog.mjs';
 import {createToolRunner} from './agent.mjs';
 
 const appRoot = path.dirname(fileURLToPath(import.meta.url));
-const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"};
+const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data: https://logos.composio.dev/api/; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"};
 const publicBrandAssets = new Map(['bricolage-latin','public-sans-regular','public-sans-semibold'].map(name=>
   ['/assets/'+name+'.woff2', ['../dist/'+name+'.woff2','font/woff2']]
 ));
 publicBrandAssets.set('/assets/access-airfield.svg',['ui/access-airfield.svg','image/svg+xml']);
+for(const file of readdirSync(new URL('../dist/integrations/',import.meta.url))){
+  if(/^[a-z0-9_][a-z0-9_-]*\.webp$/.test(file)){
+    publicBrandAssets.set('/assets/integrations/'+file,['../dist/integrations/'+file,'image/webp']);
+  }
+}
 const assets=new Map([
   ...publicBrandAssets,
   ['/', ['ui/index.html','text/html; charset=utf-8']],
@@ -51,7 +57,7 @@ export async function serveOwnerAsset(req,res,pathname) {
   const data=Array.isArray(file)
     ? (await Promise.all(file.map(part=>readFile(path.join(appRoot,part),'utf8')))).join('\n')
     : await readFile(path.join(appRoot,file));
-  res.writeHead(200,{...headers,'Content-Type':type});
+  res.writeHead(200,{...headers,'Content-Type':type,...(type==='image/webp'?{'Cache-Control':'public, max-age=86400'}:{})});
   res.end(req.method==='HEAD' ? undefined : data);
   return true;
 }
