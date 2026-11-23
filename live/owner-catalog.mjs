@@ -1,5 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {classifyTool,createAccessActions} from './access-presets.mjs';
+import {internalToolkit} from './catalog.mjs';
 import {catalogToolRestriction,fail} from './store.mjs';
 
 // This published directory lets owners explore before adding a Composio project key.
@@ -44,7 +45,7 @@ export function createCatalogActions({store,getCatalog,callbackURL}) {
   }
   async function add(b) {
     const workspace=ws(b),catalog=provider();
-    if(typeof b.toolkit!=='string'||!/^[_a-z0-9][a-z0-9_-]{0,255}$/.test(b.toolkit))fail('Choose a toolkit from the catalog.');
+    if(typeof b.toolkit!=='string'||!/^[_a-z0-9][a-z0-9_-]{0,255}$/.test(b.toolkit)||internalToolkit(b.toolkit))fail('Choose an available app from the catalog.');
     const label=optionalString(b.label,100,'connection name') || b.toolkit;
     if(Object.hasOwn(b,'authConfigId'))fail('Airport manages app sign-in configurations.',403);
     const c=store.createConnection(workspace,{toolkit:b.toolkit,label});
@@ -95,7 +96,7 @@ export function createCatalogActions({store,getCatalog,callbackURL}) {
   return new Map(Object.entries({
     ...createAccessActions(store,provider),
     'workspace-create':b=>({workspace:store.createWorkspace(b.name)}),
-    catalog:async b=>{ws(b); const page=paging(b);const p=getCatalog();return p?{...await p.listToolkits(page),source:'live'}:browseDirectory(page);},
+    catalog:async b=>{ws(b); const page=paging(b);const p=getCatalog();return p?{...await p.listToolkits({...page,connectableOnly:true}),source:'live'}:browseDirectory(page);},
     'connection-add':add,'connection-check':check,'connection-tools':listTools,'tool-access':access,
     'connection-remove':b=>{const c=conn(b);store.disableConnection(b.workspace,c.id);return {ok:true};},
     'agent-add':b=>store.issueAgentGrant(ws(b),b.name,b.lifetime,b.clientType),

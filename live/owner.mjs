@@ -32,6 +32,8 @@ export function connectionHomeURL(workspace,id,status) {
 export function isConsolePage(pathname) {
   const path=pathname.replace(/\/$/,'');
   if(path==='/account')return true;
+  // Public directory links open the app's detail page after the owner signs in.
+  if(/^\/integrations\/[a-z0-9][a-z0-9_-]{0,255}$/.test(path))return true;
   const match=/^\/w\/[\w-]+(?:\/(.+))?$/.exec(path);
   if(!match)return false;
   const page=match[1]||'overview';

@@ -524,7 +524,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     document.title=title+' · '+w.name+' · Airport';
     $('#crumb').textContent=w.name;$('#crumb').title='Switch workspace';
     const connectionTab=r.detail==='advanced'?'Advanced tools':r.tab==='tools'?'Access presets':prettyName(r.tab);
-    $('#crumb-section').innerHTML=section&&r.id?`<a href="${esc(hrefFor('#'+r.page))}">${esc(section.name)}</a><b>/</b><span>${esc(r.page==='connections'?connectionTab:r.page==='activity'?'Request':r.page==='agents'?title:'Workspace policy')}</span>`:esc(section?.name||'Page');
+    $('#crumb-section').innerHTML=section&&r.id?`<a href="${esc(hrefFor('#'+r.page))}">${esc(section.name)}</a><b>/</b><span>${esc(r.page==='connections'?connectionTab:r.page==='activity'?'Request':r.page==='agents'?title:r.page==='integrations'?'Integration details':'Workspace policy')}</span>`:esc(section?.name||'Page');
     if(globalPage(r.page)){
       $('#crumb').textContent='Airport';$('#crumb').title='Return to workspace overview';
       document.title=title+' · Airport';
@@ -932,6 +932,10 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const w=current(),id=notice.dataset.authorizingId,pilot=id==='pilot-gmail';
     const c=pilot?w:knownConnection(w,id);
     if(!c || !['active','disabled','disconnected','mismatch'].includes(c.status))return;
+    if(notice.hasAttribute('data-airport-connect')){
+      showConnectResult(w,c,notice.dataset.appName);
+      return;
+    }
     closeDialog();
     navigate(connectionPath(id,c.status),w.id);
     const label=pilot?'Gmail':c.label||toolkitName(c.toolkit);
@@ -999,13 +1003,75 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const item=directory?.items[index];if(!item || directory.type!=='catalog')return;
     openToolkit(item);
   }
-  function openToolkit(item){
+  function openToolkit(item,label,problem=''){
     if(!item||typeof item.slug!=='string'||!/^[_a-z0-9-]{1,120}$/i.test(item.slug)||!supportsCatalog())return;
-    const w=current();
-    showDialog('Connect '+(item.name||toolkitName(item.slug)),`<form id="toolkit-add" class="fields" data-toolkit="${esc(item.slug)}"><p class="sub">Connect an account to ${esc(w.name)}, then choose which tools your agents can use.</p>
-      ${manageField('Connection label','<input name="label" maxlength="80" required autocomplete="off" value="'+esc(item.name||toolkitName(item.slug))+'">')}
-      ${!state.ready?'<p class="hint">Airport hasn’t enabled sign-in for this app yet.</p>':''}
-      ${actionRow(manageBtn('catalog','Back to catalog')+(state.ready?'<button type="submit" class="button primary">Connect app</button>':''))}</form>`);
+    const w=current(),name=item.name||toolkitName(item.slug);
+    const options=state.workspaces.map(ws=>`<option value="${esc(ws.id)}"${ws.id===w.id?' selected':''}>${esc(ws.name)}</option>`).join('');
+    const needsSignIn=item.requiresAuth!==false;
+    showDialog('Connect '+name,`<form id="toolkit-add" class="fields" data-toolkit="${esc(item.slug)}" data-name="${esc(name)}" data-sign-in="${needsSignIn}">
+      ${problem?'<p class="feedback error" role="alert">'+esc(problem)+'</p>':''}
+      ${manageField('Workspace','<select name="destination" aria-label="Workspace" required>'+options+'</select>')}
+      ${manageField('Connection label','<input name="label" maxlength="80" required autocomplete="off" value="'+esc(label||name)+'">')}
+      <p class="hint">${needsSignIn?'Sign-in opens in a separate window. Return here to choose which tools agents can use.':'After connecting, choose which tools agents can use.'}</p>
+      ${!state.ready?'<p class="hint">Airport hasn’t enabled this connection yet.</p>':''}
+      ${actionRow(closeButton+(state.ready?'<button type="submit" class="button primary">'+(needsSignIn?'Continue to sign-in':'Connect app')+'</button>':''))}</form>`);
+  }
+  function showConnectResult(w,connection,name){
+    const active=connection.status==='active';
+    const tools=hrefFor(connectionPath(connection.id,'active'),w.id);
+    const body=active?'Choose the tools agents can use on this account.':'This sign-in has ended. Start a new sign-in to connect this account.';
+    const next=active
+      ? `<a class="action-link primary" href="${esc(tools)}">Choose tool access</a>`
+      : `<button class="button primary" type="button" data-manage="retry-connect" data-id="${esc(connection.id)}" data-name="${esc(name)}">Try again</button>`;
+    showDialog(active?'Connection verified':'Sign-in incomplete',`<div class="connect-status" role="status">
+      <div class="connect-identity">${mark(connection.toolkit,32)}<div><strong>${esc(connection.label)}</strong><small>${esc(name)} · ${esc(w.name)} workspace</small></div></div>
+      <p>${body}</p></div>${actionRow(btn('close','Done','minor')+next)}`);
+  }
+  async function startToolkit(form){
+    if(managementBusy || terminal)return;
+    const w=state?.workspaces.find(ws=>ws.id===form.elements.destination.value);
+    const label=form.elements.label.value.trim();
+    if(!w||!label)return;
+    const item={slug:form.dataset.toolkit,name:form.dataset.name,requiresAuth:form.dataset.signIn==='true'};
+    if(w.id!==workspaceId)navigate('#integrations/'+encodeURIComponent(item.slug),w.id);
+    showDialog('Connecting '+item.name,`<p role="status" data-connect-starting>Preparing ${esc(label)} in the ${esc(w.name)} workspace…</p>`);
+    const waiting=dialog.querySelector('[data-connect-starting]');
+    // Reserve the window during the submit gesture. A blocked or closed window falls back to a regular link.
+    let popup=null;
+    if(item.requiresAuth){
+      try{
+        popup=window.open('about:blank','_blank','popup,width=620,height=760');
+        if(popup){
+          popup.opener=null;
+          popup.document.title='Airport · Connecting';
+          popup.document.body.textContent='Airport is opening sign-in for '+item.name+'…';
+        }
+      }catch{popup?.close();popup=null;}
+    }
+    await mutateManagement(async()=>{
+      try{
+        const result=await request('connection-add',{workspace:w.id,toolkit:item.slug,label});
+        if(!waiting.isConnected || !dialog.open || workspaceId!==w.id){popup?.close();return;}
+        if(result.status==='active'){
+          popup?.close();
+          showConnectResult(w,{id:result.connectionId,toolkit:item.slug,label,status:'active'},item.name);
+          return;
+        }
+        const dest=originURL(result.url);
+        if(!dest || !result.connectionId)throw new Error('Airport could not open this sign-in. Please try again.');
+        let launched=false;
+        if(popup && !popup.closed){
+          try{popup.location.replace(dest);launched=true;}catch{popup.close();}
+        }
+        showDialog('Connect '+item.name,`<div class="connect-status" data-airport-connect data-app-name="${esc(item.name)}" data-authorizing-id="${esc(result.connectionId)}" data-authorizing-workspace="${esc(w.id)}">
+          <div class="connect-identity">${mark(item.slug,32)}<div><strong>${esc(label)}</strong><small>${esc(item.name)} · ${esc(w.name)} workspace</small></div></div>
+          <p role="status" data-authorization-status>${launched?'Finish authorization in the sign-in window.':'Open the sign-in page to authorize this account.'} Airport will verify the connection automatically.</p>
+          ${actionRow('<a class="action-link primary" href="'+esc(dest)+'" target="_blank" rel="noopener noreferrer">'+(launched?'Reopen sign-in':'Open sign-in')+' ↗</a>'+manageBtn('check-app','Check status',result.connectionId))}</div>`);
+      }catch(error){
+        popup?.close();
+        if(waiting.isConnected && dialog.open && workspaceId===w.id)openToolkit(item,label,error.message||'Sign-in could not start. Please try again.');
+      }
+    });
   }
   function connectionInfo(id){
     const w=current(),c=scopedApp(w,id);if(!c)return;
@@ -1132,6 +1198,11 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       case 'list-retry':loadDirectory();break;
       case 'pick-toolkit':chooseToolkit(Number(id));break;
       case 'copy-setup':copySetup();break;
+      case 'retry-connect':{
+        const c=knownConnection(w,id);
+        if(c?.status==='disabled')openToolkit({slug:c.toolkit,name:control.dataset.name},c.label);
+        break;
+      }
       case 'check-app':if(scopedApp(w,id))mutateManagement(async()=>{
         try {await request('connection-check',{workspace:w.id,connectionId:id,pendingOnly:true});}
         catch(error){if(dialog.open && control?.isConnected && workspaceId===w.id)throw error;return;}
@@ -1257,22 +1328,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       if(!name)return;
       mutateManagement(async w=>{const r=await request('agent-add',{workspace:w.id,name,lifetime,...(clientType?{clientType}:{})});newAgentSecret(w,r);});return;
     }
-    if(f.id==='toolkit-add'){
-      const label=f.elements.label.value.trim(),toolkit=f.dataset.toolkit;
-      if(!label)return;
-      mutateManagement(async w=>{
-        const r=await request('connection-add',{workspace:w.id,toolkit,label});
-        if(!dialog.open || !f.isConnected || workspaceId!==w.id)return;
-        if(r.url){
-          const dest=originURL(r.url);if(!dest)throw new Error('The provider returned an invalid authorization URL.');
-          showDialog('Authorize '+toolkitName(toolkit),`<p data-authorizing-id="${esc(r.connectionId)}" data-authorizing-workspace="${esc(w.id)}">Open the provider’s sign-in to authorize ${esc(label)} for ${esc(w.name)}. Airport will check the connection automatically.</p>${actionRow('<a class="action-link primary" href="'+esc(dest)+'" target="_blank" rel="noopener noreferrer">Open authorization ↗</a>'+manageBtn('check-app','Check connection',r.connectionId))}<p class="hint" role="status" data-authorization-status></p>`);
-        }else{
-          await refresh();
-          if(!dialog.open || !f.isConnected || workspaceId!==w.id)return;
-          closeDialog();navigate(connectionPath(r.connectionId,'active'),w.id);message('Connection added. Choose an access preset.');
-        }
-      });return;
-    }
+    if(f.id==='toolkit-add'){startToolkit(f);return;}
     if(f.id==='connect-form'){
       const expectedEmail=f.elements.expectedEmail.value.trim();
       action(async w=>{const r=await request('connect',{workspace:w.id,expectedEmail});authorizeMail(r.url,w);});

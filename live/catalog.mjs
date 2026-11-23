@@ -14,6 +14,10 @@ const slug = value => identifier(value,/^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,255}$/,'Inv
 const version = value => identifier(value,/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/,'Invalid Composio tool version.');
 const account = value => identifier(value,/^ca_[\w-]{1,200}$/,'Invalid connected account ID.');
 
+export function internalToolkit(name) {
+  return /^(?:composio(?:$|[_-])|(?:bench|test_app)$)/i.test(name);
+}
+
 function ownerId(value) {
   if (typeof value !== 'string' || !value.trim() || value.length > 255 || /[\r\n,]/.test(value)) fail('Invalid workspace owner.');
   return value;
@@ -125,18 +129,40 @@ export function createCatalog(apiKey, {authConfigs={},pilotGmailConfig=authConfi
     try { return await response.json(); } catch { fail('Composio returned an unreadable response.'); }
   }
 
-  async function listToolkits({search,cursor} = {}) {
-    return page(await request('/toolkits'+query({search,cursor,type:'all',limit:'50'})),toolkitInfo);
+  const configuredToolkits=new Set(Object.keys(authConfigs));
+  async function toolkitPage({search,cursor},audience) {
+    const nativeOnly=audience==='public' || (audience==='workspace' && !configuredToolkits.size);
+    const filters=audience ? {type:nativeOnly?'native':'all',include_deprecated:'false',limit:search?'50':'500'} : {type:'all',limit:'50'};
+    const data=await request('/toolkits'+query({search,cursor,...filters}));
+    if(audience && Array.isArray(data?.items))data.items=data.items.filter(row=>{
+      if(!row || row.is_deprecated===true || row.deprecated===true)return false;
+      const native=row.is_local_toolkit!==true && (row.type==='native' || (nativeOnly && row.type==null));
+      return native || (audience==='workspace' && configuredToolkits.has(String(row.slug).toLowerCase()));
+    });
+    return page(data,toolkitInfo);
   }
 
-  async function toolkitBySlug(toolkit) {
+  async function listToolkits({search,cursor,publicOnly=false,connectableOnly=false} = {}) {
+    const audience=publicOnly?'public':connectableOnly?'workspace':undefined;
+    const result=await toolkitPage({search,cursor},audience);
+    if(!audience)return result;
+    const items=result.items.filter(kit=>{
+      if(internalToolkit(kit.slug) || kit.toolsCount===0 || (publicOnly && !(kit.toolsCount>0)))return false;
+      const pinned=configuredToolkits.has(kit.slug);
+      return kit.requiresAuth ? pinned || kit.managedAuthSchemes.length>0 : !pinned;
+    });
+    // The upstream total includes integrations whose sign-in Airport has not configured.
+    return {items,nextCursor:result.nextCursor};
+  }
+
+  async function toolkitBySlug(toolkit,audience) {
     const target = slug(toolkit).toLowerCase();
     // The list endpoint exposes no_auth for each toolkit. The detail endpoint
     // omits it, so a missing field there cannot establish credentialless access.
     let cursor;
     const seen = new Set();
     do {
-      const result = await listToolkits({search:target,cursor});
+      const result = await toolkitPage({search:target,cursor},audience);
       const match = result.items.find(item => item.slug === target);
       if (match) return match;
       cursor = result.nextCursor;
@@ -165,7 +191,9 @@ export function createCatalog(apiKey, {authConfigs={},pilotGmailConfig=authConfi
   async function start({owner,toolkit,callbackURL,authConfigId:callerConfig}) {
     if (callerConfig) fail('Airport manages this app’s sign-in configuration.');
     ownerId(owner);
-    const kit = await toolkitBySlug(toolkit);
+    if(internalToolkit(toolkit))fail('This integration is unavailable.');
+    const kit = await toolkitBySlug(toolkit,'workspace');
+    if(kit.toolsCount===0)fail('This integration has no available tools.');
     let authConfigId = Object.hasOwn(authConfigs,kit.slug) ? authConfigs[kit.slug] : undefined;
     if (!kit.requiresAuth) {
       if (authConfigId) fail('This toolkit uses no authentication. Remove the auth config ID.');

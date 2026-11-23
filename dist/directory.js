@@ -52,7 +52,7 @@
     const showPopular=popularity.length>0;
     return `<div class="page-head"><div><h1 class="page-title">Integrations</h1><p class="subtitle">Find an app and connect an account to ${esc(DB.w().name)}.</p></div>
       <a class="btn" href="#connections" data-nav="connections">${Art.icon('connections',15)}Connected accounts</a></div>
-      ${showPopular?`<section class="popular-section" aria-labelledby="popular-title"><div class="section-bar"><h2 id="popular-title">Popular integrations</h2><span class="sub" title="Snapshot ${esc(discovery().asOf||'')}">By Composio usage</span></div>
+      ${showPopular?`<section class="popular-section" aria-labelledby="popular-title"><div class="section-bar"><h2 id="popular-title">Popular integrations</h2></div>
       <div class="popular-grid">${popularity.slice(0,6).map(slug=>card(apps.get(slug))).join('')}</div></section>`:''}
       <section class="panel directory"><div class="section-bar"><h2>All integrations</h2><span class="sub" id="directory-count" role="status"></span></div>
       <div class="dir-controls"><label class="field"><span>Search</span><input id="directory-search" type="search" placeholder="Name or toolkit" value="${esc(filters.search)}"></label>

@@ -71,7 +71,7 @@ test('a customer signs in, creates an account, switches workspaces and signs out
           const auth=githubAuthorizations.get(accountId);
           assert.equal(toolkit,'github');
           assert.equal(owner,auth.owner);
-          return {active:auth.approved,status:auth.approved?'ACTIVE':'INITIATED'};
+          return {active:auth.approved,status:auth.approved?'ACTIVE':auth.expired?'EXPIRED':'INITIATED'};
         }
       }
     });
@@ -297,14 +297,22 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     for(const returnsToAirport of [true,false]){
       const label=returnsToAirport?'GitHub callback':'GitHub closed tab';
       await t.test(label+' activates in Work without a manual check',async ()=>{
-        await page.goto(returnsToAirport?origin+'/#catalog?app=github&workspace=work':githubDirectory);
-        await page.waitForURL(githubDirectory);
+        await page.goto(returnsToAirport?origin+'/integrations/github':githubDirectory);
+        await page.waitForURL(returnsToAirport?personal+'/integrations/github':githubDirectory);
         await page.getByRole('button',{name:'Connect account',exact:true}).click();
         const form=page.locator('#toolkit-add');
+        if(returnsToAirport){
+          assert.equal(await form.getByRole('combobox',{name:'Workspace',exact:true}).inputValue(),'personal');
+          await form.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('work');
+        } else {
+          // A browser may decline automatic popups. The original link must still work.
+          await page.evaluate(()=>{window.open=()=>null;});
+        }
         await form.getByRole('textbox').fill(label);
+        const popupPromise=returnsToAirport?ctx.waitForEvent('page'):null;
         const [added]=await Promise.all([
           page.waitForResponse(r=>r.url()===origin+'/api/connection-add'),
-          form.getByRole('button',{name:'Connect app'}).click()
+          form.getByRole('button',{name:'Continue to sign-in'}).click()
         ]);
         assert.equal(added.status(),200);
         const {connectionId,url,status}=await added.json();
@@ -313,10 +321,9 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         const settings=connectionURL+'/settings';
         const toolsURL=connectionURL+'/tools';
         const advancedURL=toolsURL+'/advanced';
-        const [popup]=await Promise.all([
-          ctx.waitForEvent('page'),
-          page.getByRole('link',{name:/Open authorization/}).click()
-        ]);
+        const popup=popupPromise?await popupPromise:(await Promise.all([
+          ctx.waitForEvent('page'),page.getByRole('link',{name:/Open sign-in/}).click()
+        ]))[0];
         await popup.waitForURL(url);
         const accountId=new URL(url).pathname.split('/').pop();
         const auth=githubAuthorizations.get(accountId);
@@ -331,7 +338,9 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         }
         await popup.close();
         await page.bringToFront();
-        await page.waitForURL(toolsURL,{timeout:35_000});
+        await page.getByRole('heading',{name:'Connection verified'}).waitFor({timeout:35_000});
+        await page.getByRole('link',{name:'Choose tool access'}).click();
+        await page.waitForURL(toolsURL);
         assert.equal(await page.locator('#workspace-name').textContent(),'Work');
         assert.equal(await page.locator('dialog[open]').count(),0);
         const access=page.locator('[data-access-setup]');
@@ -415,6 +424,30 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         await admin.getByText('Registered users',{exact:true}).waitFor();
         assert.equal(admin.url(),origin+'/admin');
       }finally{await adminContext.close();}
+    });
+    await t.test('a failed start and an expired authorization can retry in the chosen workspace',async ()=>{
+      await page.goto(work+'/integrations/github');
+      await page.getByRole('button',{name:'Connect account',exact:true}).click();
+      const form=page.locator('#toolkit-add');
+      await form.getByRole('textbox').fill('Retry account');
+      await page.route('**/api/connection-add',r=>r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'The provider is temporarily unavailable.'})}),{times:1});
+      await page.evaluate(()=>{window.open=()=>null;});
+      await form.getByRole('button',{name:'Continue to sign-in'}).click();
+      await form.getByRole('alert').filter({hasText:'The provider is temporarily unavailable.'}).waitFor();
+      assert.equal(await form.getByRole('textbox').inputValue(),'Retry account');
+      assert.equal(await form.getByRole('combobox',{name:'Workspace',exact:true}).inputValue(),'work');
+      const [res]=await Promise.all([
+        page.waitForResponse(r=>r.url()===origin+'/api/connection-add'),
+        form.getByRole('button',{name:'Continue to sign-in'}).click()
+      ]);
+      const attempt=await res.json();
+      githubAuthorizations.get(new URL(attempt.url).pathname.split('/').pop()).expired=true;
+      await page.getByRole('button',{name:'Check status'}).click();
+      await page.getByRole('heading',{name:'Sign-in incomplete'}).waitFor();
+      await page.getByRole('button',{name:'Try again'}).click();
+      assert.equal(await form.getByRole('textbox').inputValue(),'Retry account');
+      assert.equal(await form.getByRole('combobox',{name:'Workspace',exact:true}).inputValue(),'work');
+      await form.getByRole('button',{name:'Cancel'}).click();
     });
     await page.getByRole('button',{name:'Account menu for Local Pilot'}).click();
     await page.getByRole('link',{name:'Sign out'}).click();

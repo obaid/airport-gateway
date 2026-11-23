@@ -28,8 +28,7 @@
   }
   function mount(v) {
     const {ctx,pref}=v;
-    v.el.innerHTML=`<div class="int-browser"><section class="popular-section"><div class="section-bar"><h2>Popular integrations</h2>
-      <span class="sub" title="Composio snapshot ${ctx.escape(directory.asOf)}">By Composio usage</span></div><div class="popular-grid">${directory.popular.slice(0,6).map(k=>card(ctx,directory.apps[k])).join('')}</div></section>
+    v.el.innerHTML=`<div class="int-browser"><section class="popular-section"><div class="section-bar"><h2>Popular integrations</h2></div><div class="popular-grid">${directory.popular.slice(0,6).map(k=>card(ctx,directory.apps[k])).join('')}</div></section>
       <section class="panel directory int-directory"><div class="section-bar"><h2>All integrations</h2><span class="sub" data-int-count aria-live="polite"></span></div>
       <div class="dir-controls"><label class="field"><span>Search</span><input type="search" data-int-search maxlength="200" placeholder="Name or toolkit" value="${ctx.escape(pref.search)}"></label>
       ${select(ctx,'category','Category',[['','All categories'],...directory.categories.map(c=>[c,c])],pref.category)}

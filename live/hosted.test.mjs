@@ -525,7 +525,7 @@ test('Airport email login preserves verified accounts, host isolation, workspace
   const owner=await authenticate(email);
   assert.equal((await app.send(ownerHost,'/login',owner)).headers.location,'/');
   const shell=await app.send(ownerHost,'/',owner), signIn=await app.send(ownerHost,'/login');
-  for(const path of ['/account','/w/work','/w/work/overview','/w/work/integrations?app=github',
+  for(const path of ['/account','/integrations/github','/w/work','/w/work/overview','/w/work/integrations?app=github',
     '/w/work/connections/pilot-gmail/tools/advanced','/w/personal/policies?view=advanced','/w/work/activity/record-id']){
     const guest=await app.send(ownerHost,path),signedIn=await app.send(ownerHost,path,owner);
     assert.equal(guest.status,200,path);

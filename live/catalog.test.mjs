@@ -3,7 +3,8 @@ import test from 'node:test';
 import { createCatalog, parseProjectAuthConfigs } from './catalog.mjs';
 
 const kit = {
-  slug:'testapp',name:'Test App',meta:{description:'Tools for tests',tools_count:8},
+  slug:'testapp',name:'Test App',type:'native',is_local_toolkit:false,deprecated:{toolkitId:'legacy-id'},
+  meta:{description:'Tools for tests',tools_count:8},
   no_auth:false,auth_schemes:['OAUTH2'],composio_managed_auth_schemes:['OAUTH2']
 };
 const noAuth = {...kit,no_auth:true,auth_schemes:[],composio_managed_auth_schemes:[]};
@@ -51,6 +52,47 @@ test('toolkit and tool pages use published filters, cursors and schemas',async t
   assert.deepEqual(tools.items[0].inputSchema,tool.input_parameters);
   assert.deepEqual(tools.items[0],await api.getTool(tool.slug,tool.version));
   assert.equal(calls[2].params.version,tool.version);
+});
+
+test('public catalog exposes only native, connectable apps and preserves upstream cursors',async t=>{
+  const customAuth={...kit,composio_managed_auth_schemes:[]};
+  const internal=['composio','Composio_Search','composio-admin','bench','test_app'].map(slug=>({...noAuth,slug}));
+  const {calls}=mock(t,[
+    {items:[...internal,{...kit,slug:'private',is_local_toolkit:true},{...kit,slug:'old',is_deprecated:true},
+      {...kit,slug:'empty',meta:{tools_count:0}},{...customAuth,slug:'unconfigured'}],next_cursor:'more',total_items:12},
+    {items:[kit,{...noAuth,slug:'publicdata'},{...customAuth,slug:'pinned'}]}
+  ]);
+  const api=createCatalog('test-only-project-key',{authConfigs:{pinned:'ac_example'}});
+  assert.deepEqual(await api.listToolkits({publicOnly:true}),{items:[],nextCursor:'more'});
+  const page=await api.listToolkits({publicOnly:true,cursor:'more'});
+  assert.deepEqual(page.items.map(v=>v.slug),['testapp','publicdata','pinned']);
+  assert.equal(page.nextCursor,null);
+  assert.equal(calls[0].params.type,'native');
+  assert.equal(calls[0].params.include_deprecated,'false');
+  assert.equal(calls[1].params.cursor,'more');
+});
+
+test('internal toolkits reject new connections but existing no-auth accounts still verify',async t=>{
+  const {api,calls}=mock(t,[{items:[{...noAuth,slug:'composio'}]}]);
+  for(const name of ['composio','COMPOSIO_SEARCH','bench','test_app'])
+    await assert.rejects(api.start({owner,toolkit:name,callbackURL}),/integration is unavailable/);
+  assert.equal(calls.length,0);
+  assert.equal((await api.verify({owner,toolkit:'composio',accountId:null})).active,true);
+  assert.equal(calls[0].params.type,'all');
+});
+
+test('only workspace pickers include explicitly configured custom integrations',async t=>{
+  const privateKit={...kit,type:'custom',slug:'own_toolkit',composio_managed_auth_schemes:[]};
+  const items=[privateKit,{...privateKit,slug:'other_custom'},{...noAuth,type:'native',slug:'invalid_pin'},
+    {...kit,type:'native',slug:'unknown_count',meta:{}}];
+  const config={id:'ac_own',toolkit:{slug:'own_toolkit'},status:'ENABLED'};
+  const {calls}=mock(t,[{items},{items},{items:[privateKit]},config,{session_id:'trs_own'},
+    {connected_account_id:accountId,redirect_url:signIn}]);
+  const api=createCatalog('test-only-project-key',{authConfigs:{own_toolkit:'ac_own',invalid_pin:'ac_invalid'}});
+  assert.deepEqual((await api.listToolkits({publicOnly:true})).items,[]);
+  assert.deepEqual((await api.listToolkits({connectableOnly:true})).items.map(x=>x.slug),['own_toolkit','unknown_count']);
+  assert.deepEqual(await api.start({owner,toolkit:'own_toolkit',callbackURL}),{accountId,url:signIn});
+  assert.deepEqual(calls.slice(0,3).map(c=>c.params.type),['native','all','all']);
 });
 
 test('managed and explicitly configured accounts get verified hosted links',async t => {

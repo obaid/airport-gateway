@@ -158,3 +158,9 @@
   .rg-page .audit-full { padding:14px 12px }
   .cp-page .cp-tool-title,.cp-page .cp-tool-title strong { min-width:0 }
 }
+
+#dialog .connect-status {display:grid;gap:14px}
+#dialog .connect-identity {display:flex;align-items:center;gap:12px;padding:12px 14px;background:#eef2e4;border-radius:7px}
+#dialog .connect-identity strong,#dialog .connect-identity small {display:block;overflow-wrap:anywhere}
+#dialog .connect-identity small {color:var(--muted);margin-top:3px}
+#dialog .connect-status + .actions {margin-top:16px}

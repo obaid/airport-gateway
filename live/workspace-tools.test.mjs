@@ -26,6 +26,23 @@ function connect(store, ws, account, toolkit='notion') {
   return store.activateConnection(ws,c.id,account);
 }
 
+test('the picker uses the public catalog and declines internal apps before creating a workspace record',async t=>{
+  const store=setup(t);
+  const catalog={async listToolkits(options){
+    assert.equal(options.connectableOnly,true);
+    return {items:[{slug:'gmail'}],nextCursor:null};
+  }};
+  const actions=createCatalogActions({store,getCatalog:()=>catalog});
+  const request={workspace:'personal',toolkit:'composio'};
+  assert.deepEqual((await actions.get('catalog')(request)).items,[{slug:'gmail'}]);
+  await assert.rejects(actions.get('connection-add')(request),/Choose an available app/);
+  assert.deepEqual(store.listConnections('personal'),[]);
+  const offline=createCatalogActions({store,getCatalog:()=>null});
+  for(const search of ['composio','test_app','bench'])
+    assert.deepEqual((await offline.get('catalog')({...request,search})).items,[]);
+  assert.equal((await offline.get('catalog')({...request,search:'gmail'})).items[0].slug,'gmail');
+});
+
 test('connection and version-specific tools stay in the selected workspace and account', t=>{
   const s=setup(t);
   const custom=s.createWorkspace('Research');

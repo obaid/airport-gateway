@@ -181,7 +181,7 @@
     const next=gone?`<a class="button primary" href="${esc(v.ctx.href('integrations?app='+encodeURIComponent(c.toolkit)))}">Connect another account</a>`:action('check',v.checking?'Checking…':pending?'Check sign-in':'Check connection','minor',v.checking);
     return `<section class="cp-panel setting-panel"><div class="cp-section-head"><h3>Account settings</h3></div><div class="cp-settings-form">
       <div class="cp-field"><span>Account label</span><strong class="cp-label-value">${esc(c.label)}</strong></div>
-      <dl class="cp-facts"><div><dt>Workspace</dt><dd>${esc(v.ctx.workspace.name)}</dd></div><div><dt>Connection type</dt><dd>Composio · ${esc(appName(c))}</dd></div><div><dt>Status</dt><dd>${esc(status)}</dd></div></dl>
+      <dl class="cp-facts"><div><dt>Workspace</dt><dd>${esc(v.ctx.workspace.name)}</dd></div><div><dt>App</dt><dd>${esc(appName(c))}</dd></div><div><dt>Status</dt><dd>${esc(status)}</dd></div></dl>
       ${pending?'<p class="cp-hint">Finish signing in with the provider. Airport will verify the connection and open Tool access.</p>':''}${next}${gone?'<p class="cp-hint">A new sign-in creates a separate connection with its own tool permissions.</p>':''}</div></section>
       ${!gone?`<section class="cp-panel cp-danger disconnect-row"><div><h3>${pending?'Cancel connection':'Disconnect account'}</h3><p>${pending?'Cancel this pending sign-in.':'Remove this account and its permissions from '+esc(v.ctx.workspace.name)+'. Its request history remains available.'}</p></div>${action('disconnect',pending?'Cancel sign-in':'Disconnect','minor')}</section>`:''}`;
   }
@@ -242,10 +242,10 @@
     const totals=Number.isInteger(v.total)&&v.filter==='all'?`${count(v.total,scope)} · ${allowed} allowed`:count(allowed,'allowed tool');
     const counter=v.c.pilot?`<section class="cp-panel" data-pilot-access>${toolRow(v,inboxCounter(v))}</section>`:'';
     const actions=v.group?'':saveBar(pending,v.saveLock);
-    if(v.c.pilot&&!catalogId(v.c))return `${actions}${counter}<section class="cp-panel cp-empty"><h3>Composio Gmail tools</h3><p>Verify the Gmail account to manage its catalog tools.</p><a class="button minor" href="${connectionHref(v.ctx,v.id,'settings')}">Gmail settings</a></section>`;
+    if(v.c.pilot&&!catalogId(v.c))return `${actions}${counter}<section class="cp-panel cp-empty"><h3>Gmail tools</h3><p>Verify the Gmail account to manage its catalog tools.</p><a class="button minor" href="${connectionHref(v.ctx,v.id,'settings')}">Gmail settings</a></section>`;
     return `${actions}${counter}<section class="cp-panel cp-editor perm-group"><div class="cp-section-head">${v.group?
       `<div class="cp-bare">${v.ctx.logo(v.c.toolkit,26)}<div><h3>${esc(appName(v.c))}</h3><p>${esc(v.c.label)}</p></div></div><a class="cp-text-link" href="${connectionHref(v.ctx,v.c.id,'tools/advanced')}">Account tools ${v.ctx.icon('chevron-right',14)}</a>`:
-      `<h3>${v.c.pilot?'Composio Gmail tools':'Tool permissions'}</h3><span>${totals}</span>`}</div>
+      `<h3>${v.c.pilot?'Gmail tools':'Tool permissions'}</h3><span>${totals}</span>`}</div>
       ${active?`<div class="cp-editor-guide"><span>${v.c.pilot?'Choose the tools agents can use with this Google account. Google’s permissions also apply.':'Allow or block individual tools for this account.'}</span><a class="cp-text-link" href="${connectionHref(v.ctx,v.id,'tools')}">Access presets ${v.ctx.icon('chevron-right',14)}</a></div>`:''}
       <div class="cp-toolbar"><form data-cp-search role="search"><span aria-hidden="true">${v.ctx.icon('search',17)}</span><input data-cp-query aria-label="Search tools" name="search" type="search" placeholder="Search tools" value="${esc(v.input??v.search)}" maxlength="200"></form>
       <label><span class="cp-sr">Filter by access</span><select data-cp-filter>${[['all','All tools'],['allowed','Allowed'],['blocked','Blocked']].map(([k,n])=>`<option value="${k}" ${k===v.filter?'selected':''}>${n}</option>`).join('')}</select></label></div>
