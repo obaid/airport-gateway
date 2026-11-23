@@ -59,12 +59,33 @@
     const response = await fetch('/api/account'+path,init);
     const result = await response.json().catch(()=>({}));
     if (!response.ok) {
-      const err = new Error(typeof result.error === 'string' ? result.error : 'Airport could not complete this request.');
-      err.code = result.code;
+      const err = new Error(typeof result?.error === 'string' ? result.error : 'Airport could not complete this request.');
+      err.code = result?.code;
       err.status = response.status;
       throw err;
     }
+    if (data===undefined && path==='' && (typeof result?.identity?.email!=='string' || !result.identity.email ||
+        (result.account!==null && typeof result.account?.displayName!=='string'))) {
+      throw new TypeError('Airport returned an incomplete account response.');
+    }
     return result;
+  }
+
+  function temporarilyUnavailable(error) {
+    return error instanceof TypeError || [502,503,504].includes(error.status);
+  }
+
+  async function loadSession() {
+    // The owner shell can arrive just before the host switches instances.
+    // Retry only the account read. Signup and other account changes run once.
+    for (const delay of [750,1500]) {
+      try { return await accountAPI(); }
+      catch (error) {
+        if (!temporarilyUnavailable(error)) throw error;
+      }
+      await new Promise(resolve=>setTimeout(resolve,delay));
+    }
+    return accountAPI();
   }
 
   function remember(token) {
@@ -231,9 +252,14 @@
   async function connect() {
     captureInvite();
     try{
-      session = await accountAPI();
-      if(!session.identity?.email)throw Error('Sign in with your verified email to continue.');
+      session = await loadSession();
     }catch(error){
+      if(temporarilyUnavailable(error)){
+        const panel=gate('Airport is temporarily unavailable','Try again to open this workspace.');
+        const actions=element('div','acct-actions');
+        actions.append(button('Try again','primary',()=>location.reload()));
+        panel.append(actions);return false;
+      }
       const panel=gate('Open your Airport account','We couldn’t load your sign-in details. Sign in again or retry the connection.');
       const actions=element('div','acct-actions');
       const signInPath=location.pathname==='/account'||location.pathname==='/billing'||location.pathname.startsWith('/w/')

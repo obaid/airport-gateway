@@ -32,6 +32,7 @@
   }
   const numbers = counts => ['total','unread'].filter(k => Number.isSafeInteger(counts?.[k]) && counts[k] >= 0).map(k => `${counts[k].toLocaleString()} ${k}`).join(' · ');
   let state, workspaceId='', busy=false, version=0, terminal=false, stateInflight=false, queuedMessage=null;
+  let missedStateRefreshes=0;
   let lastCheck=new Map(), pendingSince=new Map(), testResult=null;
   const pendingAppChecks=new Map();
   let returningToConsole=false;
@@ -56,8 +57,23 @@
     el.textContent=text;
     el.hidden=!text;
   }
-  function network(text) {
-    const el=$('#network'); el.textContent=text; el.hidden=!text;
+  const networkNotice=$('#network'),networkMessage=document.createElement('span'),networkRetry=document.createElement('button');
+  networkRetry.id='network-retry';networkRetry.type='button';networkRetry.textContent='Retry now';networkRetry.hidden=true;
+  networkRetry.onclick=tick;
+  networkNotice.replaceChildren(networkMessage,' ',networkRetry);
+  const gatewayLight=$('#bar .preview-light'),gatewayStatus=document.createElement('span');
+  gatewayStatus.id='gateway-status';gatewayStatus.textContent='Connecting';
+  if(gatewayLight){
+    gatewayLight.id='gateway-light';gatewayLight.hidden=true;
+    gatewayLight.parentElement.replaceChildren(gatewayLight,gatewayStatus);
+  }
+  function network(text,canRetry=false) {
+    if(networkMessage.textContent!==text)networkMessage.textContent=text;
+    networkRetry.hidden=!canRetry;
+    networkNotice.hidden=!text;
+    const status=terminal?'Sign-in required':canRetry?'Reconnecting':state?'Live gateway':'Unavailable';
+    if(gatewayStatus.textContent!==status)gatewayStatus.textContent=status;
+    if(gatewayLight)gatewayLight.hidden=status!=='Live gateway';
   }
   function showDialog(title,html) {
     $('#dialog-title').textContent=title; delete $('#dialog-content').dataset.connection; $('#dialog-content').innerHTML=html;
@@ -869,7 +885,12 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
 
   async function request(path,data) {
     const config=data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Airport-Console':'1'},body:JSON.stringify(data)};
-    const response=await fetch('/api/'+path,{...config,cache:'no-store',credentials:'same-origin',redirect:'error'});
+    let response;
+    try{
+      response=await fetch('/api/'+path,{...config,cache:'no-store',credentials:'same-origin',redirect:'error'});
+    }catch(cause){
+      throw Object.assign(new Error('Cannot reach the Airport gateway.',{cause}),{temporary:true});
+    }
     const body=await response.json().catch(()=>({}));
     if(response.status===401) {
       terminal=true;state=null;regions.clear();closeDialog();
@@ -877,12 +898,14 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       $('#workspace').disabled=true;
       $('#ws-button').disabled=true;dismissRail();$('#workspace-menu').replaceChildren();
       $('#subtitle').textContent='Sign in to open your owner console.';
-      throw new Error(['localhost','127.0.0.1','[::1]'].includes(location.hostname)?'Open Airport from its local launcher on this Mac.':'Open your Airport owner console and sign in again.');
+      const signIn=['localhost','127.0.0.1','[::1]'].includes(location.hostname)?'Open Airport from its local launcher on this Mac.':'Open your Airport owner console and sign in again.';
+      network(signIn);
+      throw new Error(signIn);
     }
-    if(!response.ok || body.ok===false) {
-      const error=typeof body.error==='string'?body.error:`Gateway request failed (${response.status}).`;
+    if(!response.ok || body?.ok===false) {
+      const error=typeof body?.error==='string'?body.error:`Gateway request failed (${response.status}).`;
       if(['connect','connection-add'].includes(path)&&/auth(?:entication)?[ _-]*config|configur(?:e|ation)|api key|provider settings|ac_/i.test(error))throw new Error('Airport hasn’t enabled sign-in for this app yet.');
-      throw new Error(error);
+      throw Object.assign(new Error(error),{temporary:[502,503,504].includes(response.status)});
     }
     return body;
   }
@@ -890,6 +913,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const order=++version;
     const result=await request('state');
     if(order!==version || terminal) return;
+    if(!Array.isArray(result?.workspaces))throw Object.assign(new Error('Airport could not read the workspace update.'),{temporary:true});
     // Older gateways serialize an open-ended grant as the latest JavaScript date.
     for(const grant of result.agentGrants || []) {
       if(grant.expiresAt==='+275760-09-13T00:00:00.000Z') grant.expiresAt=null;
@@ -900,7 +924,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const watching=w&&route.page==='connections'&&route.tab==='settings'&&!dialog.open&&
       (!route.workspace||route.workspace===w.id)&&
       (route.id==='pilot-gmail'?w:knownConnection(w,route.id))?.status==='pending';
-    state=result;network('');
+    state=result;missedStateRefreshes=0;network('');
     if(watching&&supportsCatalog()&&current()){
       const connection=route.id==='pilot-gmail'?current():knownConnection(current(),route.id);
       if(connection?.status==='active'){
@@ -1495,7 +1519,13 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       }
       await refresh();
       await checkPendingApp();
-    } catch(e){network(e.message||'Cannot reach the Airport gateway.');}
+    } catch(e){
+      if(!e.temporary || terminal)network(e.message||'Cannot reach the Airport gateway.');
+      else if(++missedStateRefreshes>1 || !state){
+        network(state?'Workspace updates are temporarily delayed. Airport will retry automatically.':
+          'Airport is reconnecting to your workspace. It will retry automatically.',true);
+      }
+    }
     finally{stateInflight=false;}
   }
   async function init(){

@@ -267,6 +267,13 @@ details>summary {
   border-radius:7px;
 }
 
+#network-retry {
+  color:inherit;
+  font:inherit;
+  text-decoration:underline;
+  text-underline-offset:3px;
+}
+
 .audit-wrap {
   overflow:auto;
 }

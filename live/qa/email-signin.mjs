@@ -10,6 +10,7 @@ import test from 'node:test';
 import { chromium } from 'playwright-core';
 import { createHostedGateway, readHostedConfig } from '../hosted.mjs';
 import { firstWorkspaceJourney } from './onboarding.mjs';
+import { checkAccountRecovery } from './account-recovery.mjs';
 
 test('a customer signs in, creates an account, switches workspaces and signs out in Chromium',async t=>{
   const dir=mkdtempSync(join(tmpdir(),'airport-browser-'));
@@ -114,6 +115,84 @@ test('a customer signs in, creates an account, switches workspaces and signs out
     await page.waitForURL(githubDirectory);
     await page.getByRole('heading',{name:'GitHub',exact:true}).first().waitFor();
     assert.equal(await page.locator('#workspace-name').textContent(),'Work');
+
+    await t.test('a gateway interruption during account loading preserves the signed-in integrations link',
+      ()=>checkAccountRecovery(ctx,personal+'/integrations'));
+
+    await t.test('temporary gateway failures recover on the Personal integrations page',async()=>{
+      const view=await ctx.newPage();
+      try{
+        let stateAvailable=false,malformedState=false,catalogAvailable=false,remainingCatalogFailures=0;
+        const down=route=>route.fulfill({status:502,contentType:'text/html',body:'Bad gateway'});
+        await view.route('**/api/state',route=>{
+          if(malformedState)return route.fulfill({status:200,contentType:'text/html',body:'Reconnecting'});
+          return stateAvailable?route.continue():down(route);
+        });
+        await view.route('**/api/catalog',route=>{
+          if(!catalogAvailable)return down(route);
+          if(remainingCatalogFailures){remainingCatalogFailures--;return down(route);}
+          return route.continue();
+        });
+        await view.goto(personal+'/integrations');
+        const retryWorkspace=view.getByRole('button',{name:'Retry now'});
+        await retryWorkspace.waitFor();
+        assert.equal(await view.locator('#gateway-status').textContent(),'Reconnecting');
+        assert.equal(await view.locator('#gateway-light').isVisible(),false);
+        stateAvailable=true;
+        await retryWorkspace.click();
+        const retryCatalog=view.getByRole('button',{name:'Retry live catalog'});
+        await retryCatalog.waitFor();
+        await view.getByRole('heading',{name:'Popular integrations'}).waitFor();
+        assert.equal(await view.locator('#network').isVisible(),false);
+        const search=view.getByRole('searchbox',{name:'Search'});
+        await search.fill('github');
+        const result=view.locator('.int-results').getByRole('link',{name:/GitHub/});
+        await result.waitFor();
+
+        // A single missed poll keeps search usable. Continued failures surface retry.
+        stateAvailable=false;
+        await Promise.all([
+          view.waitForResponse(r=>r.url()===origin+'/api/state' && r.status()===502),
+          view.evaluate(()=>window.dispatchEvent(new Event('focus')))
+        ]);
+        assert.equal(await view.locator('#network').isVisible(),false);
+        malformedState=true;
+        await view.getByText(/Workspace updates are temporarily delayed/).waitFor();
+        assert.equal(await search.inputValue(),'github');
+        malformedState=false;
+        stateAvailable=true;
+        await retryWorkspace.click();
+        await retryWorkspace.waitFor({state:'hidden'});
+        assert.equal(await view.locator('#gateway-status').textContent(),'Live gateway');
+        assert.equal(await view.locator('#gateway-light').isVisible(),true);
+        catalogAvailable=true;
+        remainingCatalogFailures=1;
+        await retryCatalog.click();
+        await retryCatalog.waitFor({state:'hidden'});
+        assert.equal(remainingCatalogFailures,0);
+        assert.equal(await search.inputValue(),'github');
+
+        catalogAvailable=false;
+        await result.click();
+        const availability=view.getByRole('button',{name:'Check live availability'});
+        await availability.waitFor();
+        await view.getByRole('heading',{name:'Accounts in Personal'}).waitFor();
+        const connect=view.getByRole('button',{name:'Connect account'});
+        assert.equal(await connect.isEnabled(),false);
+        catalogAvailable=true;
+        remainingCatalogFailures=1;
+        await availability.click();
+        await availability.waitFor({state:'hidden'});
+        await view.waitForFunction(()=>document.querySelector('[data-connect-integration]')?.disabled===false);
+        assert.equal(await connect.isEnabled(),true);
+        await view.route('**/api/catalog',route=>route.fulfill({status:401,body:'Expired'}));
+        await view.getByRole('navigation',{name:'Workspace pages'}).getByRole('link',{name:'Integrations'}).click();
+        await view.getByText('Sign-in required',{exact:true}).waitFor();
+        assert.equal(await view.locator('#network').isVisible(),true);
+        assert.equal(await retryWorkspace.isVisible(),false);
+        assert.equal(await view.locator('#gateway-light').isVisible(),false);
+      }finally{await view.close();}
+    });
 
     await t.test('workspace links open independently in two tabs and account settings are global',async ()=>{
       const sidebar=page.getByRole('navigation',{name:'Workspace pages'});

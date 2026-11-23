@@ -63,9 +63,19 @@
     if(v.pool?.query!==query)v.pool={query,items:[],seen:new Set(),cursors:new Set(),cursor:null,done:false,pending:null};
     return v.pool;
   }
+  async function readCatalog(ctx,filters,current){
+    const query={workspace:ctx.workspace.id,...filters};
+    try{return await ctx.request('catalog',query);}
+    catch(error){
+      if(!error.temporary||!current())throw error;
+      await new Promise(resolve=>setTimeout(resolve,500));
+      if(!current())throw error;
+      return ctx.request('catalog',query);
+    }
+  }
   async function nextBatch(v,pool){
     if(pool.pending)return pool.pending;
-    pool.pending=v.ctx.request('catalog',{workspace:v.ctx.workspace.id,search:pool.query||undefined,cursor:pool.cursor||undefined})
+    pool.pending=readCatalog(v.ctx,{search:pool.query||undefined,cursor:pool.cursor||undefined},()=>v.ctx.isCurrent()&&v.pool===pool)
       .then(result=>{
         for(const raw of result.items){if(!pool.seen.has(raw.slug)){pool.seen.add(raw.slug);pool.items.push(enriched(raw));}}
         pool.cursor=result.nextCursor||null;
@@ -131,7 +141,7 @@
     const {ctx,el}=v,{escape:esc,icon}=ctx;
     const seq=++v.seq, current=()=>seq===v.seq&&views.get(el)===v&&ctx.isCurrent();
     const known=directory.apps[slug];
-    function paint(a,live){
+    function paint(a,live,unavailable=false){
       if(!current())return;
       let linked=accounts(ctx,slug);
       const reference=known?`<a class="text-btn int-reference" href="https://docs.composio.dev/toolkits/${encodeURIComponent(slug)}" target="_blank" rel="noopener noreferrer">Tool reference ${icon('arrow-up-right',14)}</a>`:'';
@@ -139,7 +149,8 @@
         ${a.description?`<p class="app-description">${esc(a.description)}</p>`:''}<dl class="facts"><div><dt>Available tools</dt><dd>${Number.isFinite(a.toolsCount)?a.toolsCount.toLocaleString():'See connected tools'}</dd></div>
         <div><dt>Authentication</dt><dd>${esc(auth(a))}</dd></div><div><dt>Toolkit</dt><dd><code>${esc(a.slug)}</code></dd></div></dl>
         <button class="button primary" type="button" data-connect-integration ${live?'':'disabled'}>${icon('plus',15)}Connect account</button>
-        ${!live?`<p class="int-note">${ctx.state.ready?'Waiting for confirmation from the live catalog.':'Airport’s provider must be configured before connecting an account.'}</p>`:''}</div></section>
+        ${unavailable?'<p class="int-note" role="status">Showing published app details. <button type="button" data-int-retry>Check live availability</button></p>':
+          !live?`<p class="int-note">${ctx.state.ready?'Checking whether this app can connect…':'Airport’s provider must be configured before connecting an account.'}</p>`:''}</div></section>
         <section class="panel linked-accounts"><div class="panel-head"><h2>Accounts in ${esc(ctx.workspace.name)}</h2></div>
         ${linked.map(c=>{
           const hasInboxCounts=c.id==='pilot-gmail'&&ctx.workspace.policy==='Allow';
@@ -147,7 +158,11 @@
           const status=c.status==='active'?(needsAccess?'Connected · Set up access':'Connected'):c.status==='pending'?'Awaiting sign-in':'Address mismatch';
           return `<a class="linked-account" href="${esc(ctx.connectionPath(c.id,c.status))}"><span>${esc(c.label||a.name)}</span><span class="int-status">${status}</span>${icon('chevron-right',14)}</a>`;
         }).join('')||'<p class="empty">No accounts connected.</p>'}</section></div>`;
-      el.onclick=e=>{if(live&&current()&&e.target.closest('[data-connect-integration]'))ctx.connectToolkit(a);};
+      el.onclick=e=>{
+        if(!current())return;
+        if(unavailable&&e.target.closest('[data-int-retry]'))detail(v,slug);
+        else if(live&&e.target.closest('[data-connect-integration]'))ctx.connectToolkit(a);
+      };
     }
     if(known)paint(known,false);
     else el.innerHTML='<p class="int-note">Looking up this integration…</p>';
@@ -155,17 +170,22 @@
     try{
       let cursor;const seen=new Set();
       do{
-        const result=await ctx.request('catalog',{workspace:ctx.workspace.id,search:slug,cursor});
+        const result=await readCatalog(ctx,{search:slug,cursor},current);
         if(!current())return;
         const row=result.items.find(a=>a.slug===slug);
-        if(row){paint(enriched(row),ctx.state.ready&&result.source!=='directory');return;}
+        if(row){paint(enriched(row),ctx.state.ready&&result.source!=='directory',ctx.state.ready&&result.source==='directory');return;}
         cursor=result.nextCursor;
         if(!cursor||seen.has(cursor))break;
         seen.add(cursor);
       }while(cursor);
       el.innerHTML=`<div class="panel empty"><strong>Integration unavailable</strong><p>This app is unavailable in the current project catalog.</p><a class="button" href="${ctx.escape(ctx.href('integrations'))}">All integrations</a></div>`;
     }catch{
-      if(current()){el.innerHTML='<div class="panel empty"><strong>The live catalog could not be reached.</strong><p>Retry to check this integration.</p><button class="button" data-int-retry>Retry</button></div>';el.querySelector('[data-int-retry]').onclick=()=>detail(v,slug);}
+      if(!current())return;
+      if(known)paint(known,false,true);
+      else{
+        el.innerHTML='<div class="panel empty"><strong>The live catalog could not be reached.</strong><p>Retry to check this integration.</p><button type="button" class="button" data-int-retry>Retry</button></div>';
+        el.querySelector('[data-int-retry]').onclick=()=>detail(v,slug);
+      }
     }
   }
   function render(el,ctx) {
