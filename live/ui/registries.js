@@ -120,7 +120,7 @@
       v.rows=logs.filter(l=>agent && l.actor===agent.actor);
       html=agentDetail(v,agent);
     }else if(r.id){
-      const entry=logs.find(l=>l.id===r.id);
+      const entry=logs.find(l=>l.id===r.id) || (w.firstAgentRequest?.id===r.id?w.firstAgentRequest:null);
       html=entry?section(ctx,'Request',ctx.auditEntry(entry)) : section(ctx,'Request unavailable',empty(ctx,'This request is unavailable','Open a request from this workspace’s recent activity.'));
     }else{
       const legacy=(ctx.state.activityDetailsVersion||0)<1?'<p class="rg-legacy">This gateway records request summaries. The upgraded gateway records additional response details for new requests.</p>':'';

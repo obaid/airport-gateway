@@ -127,6 +127,9 @@ test('a preset read remains guarded against tag drift after customization',async
   await apply(await preview(),'read-only');
   const pin=store.approvedTools('personal')[0];
   await call('tool-access',{allow:true,slug:write.slug});
+  const {tools}=store.listConnections('personal')[0];
+  assert.equal(tools.find(t=>t.slug===read.slug).readOnly,true);
+  assert.equal(tools.find(t=>t.slug===write.slug).readOnly,false);
   let dispatched=0;
   provider.execute=async ({beforeDispatch})=>{
     beforeDispatch({...read,tags:['updateHint']});

@@ -526,7 +526,7 @@ test('Airport email login preserves verified accounts, host isolation, workspace
   assert.equal((await app.send(ownerHost,'/login',owner)).headers.location,'/');
   const shell=await app.send(ownerHost,'/',owner), signIn=await app.send(ownerHost,'/login');
   for(const path of ['/account','/integrations/github','/w/work','/w/work/overview','/w/work/integrations?app=github',
-    '/w/work/connections/pilot-gmail/tools/advanced','/w/personal/policies?view=advanced','/w/work/activity/record-id']){
+    '/w/work/connections/pilot-gmail/tools/advanced','/w/personal/policies?view=advanced','/w/work/activity/record-id','/w/personal/setup']){
     const guest=await app.send(ownerHost,path),signedIn=await app.send(ownerHost,path,owner);
     assert.equal(guest.status,200,path);
     assert.equal(guest.body,signIn.body,path);
@@ -535,7 +535,7 @@ test('Airport email login preserves verified accounts, host isolation, workspace
     assert.equal(signedIn.body,shell.body,path);
     assert.equal((await app.send(agentHost,path,owner)).status,404,path);
   }
-  for(const path of ['/w/work/missing.js','/w/work/connections/pilot-gmail/tools/unrecognized','/account/settings']){
+  for(const path of ['/w/work/missing.js','/w/work/connections/pilot-gmail/tools/unrecognized','/w/work/setup/nonsense','/account/settings']){
     assert.equal((await app.send(ownerHost,path,owner)).status,404,path);
   }
   assert.equal((await app.send(ownerHost,'/w/work/overview',owner,undefined,'HEAD')).body,'');

@@ -154,11 +154,14 @@ test('actual MCP entry points expose only permitted tools; return authorized res
   assert.equal(posts,0);
   const answer=(await call(work.token,{query:sent})).result;
   assert.equal(answer.isError,false);assert.deepEqual(answer.structuredContent,{data:{items:[received],extra:sent}});
-  const log=s.state().logs.find(l=>l.tool===enabled.mcpName&&l.outcome==='Allowed');
+  const state=s.state();
+  const log=state.logs.find(l=>l.tool===enabled.mcpName&&l.outcome==='Allowed');
+  assert.deepEqual(state.workspaces.find(w=>w.id==='work').firstAgentRequest,log);
+  assert.equal(state.workspaces.find(w=>w.id==='personal').firstAgentRequest,null);
   assert.equal(log.actor,'Research agent');assert.equal(log.workspace,'work');
   assert.deepEqual(log.exchange.request.params.arguments.fields,['query']);
   assert.deepEqual(log.exchange.response.result.fields,['items']);assert.equal(log.exchange.response.dispatched,true);
-  assert(!JSON.stringify(s.state().logs).includes(sent));assert(!JSON.stringify(s.state().logs).includes(received));
+  assert(!JSON.stringify(state).includes(sent));assert(!JSON.stringify(state).includes(received));
   metadata={...tool,inputSchema:{type:'object',properties:{}}};
   assert((await call(work.token,{query:sent})).result.isError);assert.equal(posts,1);
   metadata=tool;

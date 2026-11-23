@@ -24,6 +24,7 @@
     <nav class="nav-sections" aria-label="Workspace pages">
       <div class="nav-label">Workspace</div>
       <a class="nav-item" href="#overview" data-nav="overview"><span data-icon="overview"></span><span>Overview</span></a>
+      <a class="nav-item" href="#setup" data-nav="setup" hidden><span data-icon="route"></span><span>Setup guide</span></a>
       <a class="nav-item" href="#connections" data-nav="connections"><span data-icon="connections"></span><span>Connections</span></a>
       <a class="nav-item" href="#integrations" data-nav="integrations"><span data-icon="layers"></span><span>Integrations</span></a>
       <a class="nav-item" href="#agents" data-nav="agents"><span data-icon="agents"></span><span>Agents</span></a>
@@ -54,7 +55,9 @@
     <main id="main" tabindex="-1">
       <div class="page-head"><div><h1 class="page-title" id="page-title" tabindex="-1">Workspace overview</h1><p class="subtitle" id="subtitle">Connecting to the owner console…</p></div><div class="actions" id="page-actions"></div></div>
       <div role="status" id="message" hidden></div><div id="network" role="alert" hidden></div>
+      <div id="setup-context" hidden></div>
       <div id="page-content">
+        <section id="setup-guide" aria-label="Workspace setup guide" hidden></section>
         <div id="workspace-summary" hidden></div>
         <section id="gate-map" class="map-panel panel" aria-label="Workspace gateway map" hidden></section>
         <div id="overview-feed" hidden></div>

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { chromium } from 'playwright-core';
 import { createHostedGateway, readHostedConfig } from '../hosted.mjs';
+import { firstWorkspaceJourney } from './onboarding.mjs';
 
 test('a customer signs in, creates an account, switches workspaces and signs out in Chromium',async t=>{
   const dir=mkdtempSync(join(tmpdir(),'airport-browser-'));
@@ -61,6 +62,16 @@ test('a customer signs in, creates an account, switches workspaces and signs out
           return {items:githubTools,nextCursor:null};
         },
         getTool:async slug=>[...githubTools,...gmailTools].find(tool=>tool.slug===slug),
+        execute:async({owner,accountId,slug,version,beforeDispatch})=>{
+          const auth=githubAuthorizations.get(accountId);
+          assert.ok(auth?.approved);
+          assert.equal(auth.owner,owner);
+          const tool=githubTools.find(tool=>tool.slug===slug);
+          assert.equal(tool?.slug,'GITHUB_LIST_REPOSITORIES');
+          assert.equal(tool.version,version);
+          beforeDispatch(tool);
+          return {data:{items:[{name:'onboarding-example'}]}};
+        },
         start:async({owner,toolkit,callbackURL})=>{
           assert.equal(toolkit,'github');
           const accountId='ca_browser_'+(githubAuthorizations.size+1);
@@ -114,6 +125,8 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         await workTab.goto(workConnections);
         await workTab.getByRole('heading',{name:'Connections',exact:true}).waitFor();
         await page.goto(personal+'/overview?workspace=work');
+        await page.waitForURL(personal+'/setup');
+        await page.getByRole('button',{name:'Skip setup for now'}).click();
         await page.waitForURL(personal+'/overview');
         await page.getByRole('heading',{name:'Workspace overview',exact:true}).waitFor();
         await workTab.reload();
@@ -339,7 +352,7 @@ test('a customer signs in, creates an account, switches workspaces and signs out
         await popup.close();
         await page.bringToFront();
         await page.getByRole('heading',{name:'Connection verified'}).waitFor({timeout:35_000});
-        await page.getByRole('link',{name:'Choose tool access'}).click();
+        await page.getByRole('dialog').getByRole('link',{name:'Choose tool access'}).click();
         await page.waitForURL(toolsURL);
         assert.equal(await page.locator('#workspace-name').textContent(),'Work');
         assert.equal(await page.locator('dialog[open]').count(),0);
@@ -448,6 +461,9 @@ test('a customer signs in, creates an account, switches workspaces and signs out
       assert.equal(await form.getByRole('textbox').inputValue(),'Retry account');
       assert.equal(await form.getByRole('combobox',{name:'Workspace',exact:true}).inputValue(),'work');
       await form.getByRole('button',{name:'Cancel'}).click();
+    });
+    await t.test('a new workspace guides a customer to its first agent request',async ()=>{
+      await firstWorkspaceJourney({browser,origin,gateway,githubAuthorizations,delivery:()=>delivered});
     });
     await page.getByRole('button',{name:'Account menu for Local Pilot'}).click();
     await page.getByRole('link',{name:'Sign out'}).click();

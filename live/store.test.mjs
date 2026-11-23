@@ -282,3 +282,41 @@ test('weekly request totals include history beyond the receipt list and exclude 
   assert.equal(totals.get('personal').allowed,102);
   assert.equal(totals.get('work').blocked,1);
 });
+
+test('each workspace retains its first successful agent receipt beyond recent activity and across a restart', t => {
+  const dir=mkdtempSync(join(tmpdir(),'airport-first-request-'));
+  const file=join(dir,'tenant.sqlite3');
+  let store=createStore(file);
+  t.after(()=>{store.close();rmSync(dir,{recursive:true,force:true});});
+  const at=Date.now();
+  t.mock.method(Date,'now',()=>at);
+  const entry=(workspace)=>store.state().workspaces.find(w=>w.id===workspace).firstAgentRequest;
+  const request={method:'GET',path:'/api/gmail/inbox-counts',params:{}};
+  const log=(ws,channel,outcome,called,tool='gmail_inbox_counts')=>store.log(
+    ws,channel==='owner'?'Owner console':'Muse',tool,outcome,called,'Test activity.',
+    channel && {channel,request,response:null}
+  );
+  log('personal','owner','Allowed',true);
+  log('personal','mcp','Allowed',false,'airport_list_connections');
+  log('personal','http','Issued',false,'pair_connector_grant');
+  log('personal','mcp','Blocked',true);
+  log('personal','mcp','Failed',true);
+  log('personal',null,'Allowed',true); // Older audit entries do not identify a transport.
+  const lookup=log('personal','http','Running',true);
+  assert.equal(entry('personal'),null);
+  store.finish(lookup,'Allowed','Returned inbox counts.',{total:7,unread:2});
+  const receipt=entry('personal');
+  assert.equal(receipt.id,lookup);
+  assert.deepEqual(receipt.exchange.response,{total:7,unread:2});
+  assert.equal(entry('work'),null);
+  const other=log('work','mcp','Running',true);
+  store.finish(other,'Allowed','Returned a result.',{outcome:'Allowed',dispatched:true});
+  for(let i=0;i<101;i++)log('personal','http','Allowed',true);
+  store.close();
+  store=createStore(file);
+  const recent=store.state().logs;
+  assert.equal(recent.length,100);
+  assert(recent.every(row=>row.id!==lookup && row.id!==other));
+  assert.deepEqual(entry('personal'),receipt);
+  assert.equal(entry('work').id,other);
+});

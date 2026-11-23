@@ -104,6 +104,8 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       outcome TEXT NOT NULL, providerCalled INTEGER NOT NULL DEFAULT 0, detail TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS requests_at_workspace ON requests(at,workspace);
+    CREATE INDEX IF NOT EXISTS requests_allowed_provider_by_workspace ON requests(workspace,at)
+      WHERE outcome='Allowed' AND providerCalled=1;
     CREATE TABLE IF NOT EXISTS request_agent_clients(
       request_id TEXT PRIMARY KEY REFERENCES requests(id) ON DELETE CASCADE, clientType TEXT NOT NULL
     );
@@ -222,8 +224,8 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
   }
   function listToolPolicies(ws,id) {
     getConnection(ws,id);
-    return db.prepare('SELECT slug,version,name,mcpName FROM catalog_tool_policies WHERE connection=? ORDER BY name,slug').all(id)
-      .map(t=>({...t,enabled:true,allowed:true}));
+    return db.prepare('SELECT slug,version,name,mcpName,presetClass FROM catalog_tool_policies WHERE connection=? ORDER BY name,slug').all(id)
+      .map(({presetClass,...t})=>({...t,enabled:true,allowed:true,readOnly:presetClass==='read'}));
   }
   function listConnections(ws) {
     get(ws);
@@ -451,6 +453,19 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
       return {status:'approved',token};
     });
   }
+  const activityRows=`SELECT r.*,c.clientType,x.channel,x.request_json,x.response_json FROM requests r
+    LEFT JOIN request_agent_clients c ON c.request_id=r.id
+    LEFT JOIN request_exchanges x ON x.request_id=r.id`;
+  const recentActivity=db.prepare(activityRows+' ORDER BY r.at DESC,r.rowid DESC LIMIT 100');
+  const firstAgentRequest=db.prepare(activityRows+` WHERE r.workspace=? AND r.outcome='Allowed' AND r.providerCalled=1
+    AND x.channel IN ('http','mcp') ORDER BY r.at,r.rowid LIMIT 1`);
+  function activityEntry(row) {
+    if (!row) return null;
+    const {channel,request_json,response_json,clientType,...r}=row;
+    return {...r,...(clientType && {clientType}),at:iso(r.at),providerCalled:!!r.providerCalled,exchange:channel ? {
+      channel,request:JSON.parse(request_json),response:response_json === null ? null : JSON.parse(response_json)
+    } : null};
+  }
   const state = () => ({
     activityDetailsVersion:1,
     weeklyUsage:db.prepare(`SELECT workspace, count(*) AS requests,
@@ -464,17 +479,10 @@ export function createStore(filename, {recoverOnOpen = true} = {}) {
     agentGrants:db.prepare('SELECT id FROM workspaces').all().flatMap(w=>listAgentGrants(w.id)),
     workspaces:db.prepare('SELECT * FROM workspaces ORDER BY id').all().map(r=>({
       id:r.id,name:r.name,status:r.status,email:r.email,expectedEmail:r.expected,policy:r.policy,grant:validGrant(r),invitation:invitation(r.id),
-      gmailCatalog:pilotCatalog(r.id)
+      gmailCatalog:pilotCatalog(r.id),firstAgentRequest:activityEntry(firstAgentRequest.get(r.id))
     })),
     invites:db.prepare("SELECT id,ws AS workspace,at FROM pairings WHERE stage='waiting' AND tries<5 AND expires>? ORDER BY at DESC").all(now()).map(r=>({...r,at:iso(r.at)})),
-    logs:db.prepare(`SELECT r.*,c.clientType,x.channel,x.request_json,x.response_json FROM requests r
-      LEFT JOIN request_agent_clients c ON c.request_id=r.id
-      LEFT JOIN request_exchanges x ON x.request_id=r.id ORDER BY r.at DESC,r.rowid DESC LIMIT 100`).all()
-      .map(({channel,request_json,response_json,clientType,...r})=>({
-        ...r,...(clientType && {clientType}),at:iso(r.at),providerCalled:!!r.providerCalled,exchange:channel ? {
-          channel,request:JSON.parse(request_json),response:response_json === null ? null : JSON.parse(response_json)
-        } : null
-      }))
+    logs:recentActivity.all().map(activityEntry)
   });
   return {
     createWorkspace,createConnection,attachConnection,activateConnection,getConnection,listConnections,disableConnection,listToolPolicies,blockTool,setToolPolicy,applyConnectionAccess,resolveTool,approvedTools,

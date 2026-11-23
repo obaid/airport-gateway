@@ -346,5 +346,5 @@
     settingsHost=root;const inner=element('div','acct-settings');root.replaceChildren(inner);
     profile(inner);if(session.signupMode==='invite' && session.account.role==='admin')invitations(root);
   }
-  window.AirportAccount = {connect,isPlatformAdmin,signedIn:()=>Boolean(session?.account),settings,unmount(){settingsHost=null;createdInvite=null;closeMenu();}};
+  window.AirportAccount = {connect,isPlatformAdmin,accountId:()=>session?.account?.id,signedIn:()=>Boolean(session?.account),settings,unmount(){settingsHost=null;createdInvite=null;closeMenu();}};
 })();

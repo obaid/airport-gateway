@@ -370,6 +370,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   const sections={
     overview:{name:'Overview',title:'Workspace overview'},
+    setup:{name:'Setup guide',title:'Set up your workspace'},
     connections:{name:'Connections',title:'Connections'},
     integrations:{name:'Integrations',title:'Integrations'},
     agents:{name:'Agents',title:'Agents'},
@@ -381,7 +382,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   const globalPage=page=>page==='account'||page==='admin';
   window.AirportPages ||= {};
   let mountedKey='',mountedWorkspace='',mountedCatalog=null,mountedModule=null,componentSignature='',requestedAudit='';
-  const panelIds=['gate-map','workspace-summary','overview-feed','connections','agents','module-page','mail','muse','permissions','audit'];
+  const panelIds=['setup-context','setup-guide','gate-map','workspace-summary','overview-feed','connections','agents','module-page','mail','muse','permissions','audit'];
 
   function browserRoute(){
     // Older bookmarks put the entire console route, including its query, after /#.
@@ -421,6 +422,10 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function navigate(target,workspace){
     const href=hrefFor(target,workspace);
+    const destination=parseRoute(href);
+    if(destination.page==='overview'&&destination.workspace===workspaceId&&current()&&setupPreference(current())==='started'){
+      setupPreference(current(),'dismissed');
+    }
     if(href!==location.pathname+location.search+location.hash){
       // Remember where the owner entered a global page, including across reloads.
       const entry=globalPage(parseRoute(target).page)?{workspace:workspaceId}:null;
@@ -491,6 +496,54 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const invites=pending.map(i=>row(invitationLogo(i,28),i.name?i.name+' invitation':'One-use invitation','Invitation expires '+when(i.expiresAt),'Pending','inspect-agent-invite',i.id)).join('');
     region('agents',[w.id,accepted,invites],heading('Workspace agents',icon('agents',18),badge(String(entries.length)))+(accepted+invites||'<p class="empty">Add an agent to issue its own workspace credential.</p>'));
   }
+  const setupPreferences=new Map();
+  function setupPreference(w,value){
+    const owner=window.AirportAccount?.accountId?.();
+    const key='airport.setup.'+encodeURIComponent(owner||'local')+'.'+encodeURIComponent(w.id);
+    if(!owner){
+      if(value)setupPreferences.set(key,value);
+      return setupPreferences.get(key)||'';
+    }
+    if(value){
+      if(setupPreferences.get(key)!==value){
+        setupPreferences.set(key,value);
+        try{localStorage.setItem(key,value);}catch{}
+      }
+      return value;
+    }
+    try{return localStorage.getItem(key)||setupPreferences.get(key)||'';}catch{return setupPreferences.get(key)||'';}
+  }
+  function setupAvailable(){
+    return Boolean(window.AirportOnboarding && supportsCatalog());
+  }
+  function shouldStartSetup(w){
+    if(!setupAvailable()||!window.AirportAccount?.signedIn()||state.workspaces.some(ws=>ws.firstAgentRequest))return false;
+    const preference=setupPreference(w);
+    if(preference)return preference==='started';
+    return !state.connections?.length&&!state.agentGrants?.length&&!state.agentInvitations?.length&&!state.logs?.length&&
+      state.workspaces.every(ws=>!pilotConnected(ws)&&!ws.grant&&!ws.invitation);
+  }
+  function renderSetup(w,model){
+    reveal('setup-guide');
+    const html=window.AirportOnboarding.view({w,state,model,esc,icon,mark,agentLogo,when,href:target=>hrefFor(target,w.id)});
+    region('setup-guide',html,html);
+  }
+  function renderSetupContext(w,r){
+    const el=$('#setup-context');
+    const preference=setupPreference(w);
+    const partial=window.AirportAccount?.signedIn() && preference!=='dismissed' &&
+      !state.workspaces.some(ws=>ws.firstAgentRequest) &&
+      (pilotConnected(w)||workspaceApps(w).length||agentGrants(w).length||agentInvites(w).length);
+    const show=setupAvailable() && (preference==='started'||partial) &&
+      ['overview','connections','policies','agents','integrations'].includes(r.page);
+    el.hidden=!show;
+    if(!show)return;
+    const stage=window.AirportOnboarding.model(state,w).stage;
+    const here=r.page==='connections' && r.id && r.tab==='tools' && stage==='policy';
+    const label=here?'Back to setup':{connect:'Continue connecting an app',policy:'Choose tool access',invite:'Continue to agent setup',request:'Try your first request',complete:'See your first request'}[stage];
+    const html='<div class="setup-context"><strong>'+icon('route',16)+'Workspace setup</strong>'+goLink('#setup',esc(label)+icon('arrow-right',15),'','data-setup-action="continue"')+'</div>';
+    region('setup-context',[w.id,html],html);
+  }
   function renderShell(w,r){
     document.body.dataset.page=r.page;
     const section=sections[r.page],connection=r.page==='connections'&&r.id?knownConnection(w,r.id):null;
@@ -501,6 +554,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(r.page==='activity'&&r.id)title='Request details';
     if(r.page==='agents'&&r.id)title=r.id==='muse'?'Muse':scopedAgent(w,r.id)?.actor||'Agent details';
     const description={
+      setup:'Connect an app, set its permissions, and see your first agent request in Activity.',
       overview:'Agent access and request activity in '+w.name+'.',
       connections:r.id?'Account settings, tool access and requests in '+w.name+'.':'Accounts connected to '+w.name+'.',
       integrations:'Find an app to connect to '+w.name+'.',
@@ -537,7 +591,9 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(!r.id && r.page==='agents'&&supportsCatalog())actions.push(`<button class="btn primary" type="button" data-manage="agent-add">${icon('plus',16)}Add agent</button>`);
     if(r.page==='integrations'&&!selectedApp)actions.push(goLink('#connections',icon('connections',15)+'Connected accounts','btn'));
     if(!r.id&&['policies','activity'].includes(r.page))actions.push(`<button class="btn ${r.page==='activity'?'primary':''}" type="button" data-manage="test-request">${icon('play',14)}Test a request</button>`);
-    if(r.page==='overview' && supportsCatalog() && !pilotConnected(w) && !workspaceApps(w).length){
+    if(r.page==='setup' && setupAvailable()){
+      actions.push('<button class="btn" type="button" data-manage="setup-dismiss">'+(w.firstAgentRequest?'Open overview':'Skip setup for now')+'</button>');
+    }else if(r.page==='overview' && supportsCatalog() && !pilotConnected(w) && !workspaceApps(w).length){
       $('#subtitle').textContent='Connect an app to choose which tools agents can use in '+w.name+'.';
       actions.push(goLink('#integrations',icon('plus',16)+'Connect an app','btn primary'));
     }else if(r.page==='overview'){
@@ -550,6 +606,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     }
     region('page-actions',[w.id,actions],actions.join(''));
     for(const link of document.querySelectorAll('[data-nav]')){
+      if(link.dataset.nav==='setup')link.hidden=!setupAvailable();
       const active=link.dataset.nav===r.page;
       link.href=hrefFor('#'+link.dataset.nav);link.classList.toggle('selected',active);
       if(active)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
@@ -641,6 +698,12 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       return;
     }
     renderShell(w,r);
+    renderSetupContext(w,r);
+    if(r.page==='setup' && setupAvailable()){
+      setupPreference(w,'started');
+      renderSetup(w,window.AirportOnboarding.model(state,w));
+      return;
+    }
     if(r.page==='admin'){renderModule(w,r,adminPage);return;}
     if(r.page==='account'&&window.AirportAccount?.signedIn()){
       window.AirportAccount.settings(reveal('module-page'));
@@ -762,6 +825,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(requested)workspaceId=requested.id;
     if(!current())workspaceId=state.workspaces[0].id;
     const w=current(),missing=Boolean(wanted&&!requested);
+    if(!missing && r.page==='overview' && !r.id && !r.tab && shouldStartSetup(w))r.page='setup';
     const autoAdd=!missing&&supportsCatalog()&&r.page==='agents'&&!r.id&&r.query.get('add')==='1';
     if(autoAdd)r.query.delete('add');
     const url=location.pathname+location.search+location.hash;
@@ -1134,7 +1198,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     const setup=`Register as an agent for my ${w.name} workspace in Airport. `+
       (result.name?`I chose the name ${JSON.stringify(result.name)}. `:'Choose your own agent name. ')+
       `POST JSON to ${base}/agents/register with this body: ${JSON.stringify(result.name?{invitation:result.invitation,name:result.name}:{invitation:result.invitation,name:'<your chosen name>'})}. Redeem the one-use invitation by ${result.expiresAt}. ${access} Save the returned bearer token in your private credential store and keep it out of chat. ${discoveryInstructions(endpoint)}`;
-    showDialog('Agent setup prompt',`<p class="actor-with-icon">${invitationLogo(result,24)}<span>Paste this prompt into ${result.name?esc(result.name):'the agent you want to connect'}. It contains a one-use invitation valid for 10 minutes.</span></p>
+    showDialog('Agent setup prompt',`<p class="actor-with-icon">${invitationLogo(result,24)}<span>Open ${result.name?esc(result.name):'the assistant you want to connect'} and paste this prompt into its chat. Return to Airport after it registers. This one-use invitation is valid for 10 minutes.</span></p>
       ${formField('Setup prompt for '+(result.name||'your agent'),'<textarea id="enrollment-prompt" readonly rows="7" spellcheck="false"></textarea>')}
       <p class="hint">Invitation expires ${esc(when(result.expiresAt))}. ${esc(access)}</p>
       ${actionRow(manageBtn('copy-setup','Copy setup prompt','',true)+btn('close','Done','minor')+'<span role="status" id="token-copy-status"></span>')}`);
@@ -1147,6 +1211,26 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
   }
   function appManagement(action,id,control){
     const w=current();if(!w)return;
+    if(action==='setup-dismiss'){
+      setupPreference(w,'dismissed');
+      navigate('#overview');
+      $('#page-title').focus({preventScroll:true});
+      return;
+    }
+    if(action==='setup-connect'||action==='setup-invite'){
+      if(!setupAvailable())return;
+      if(action==='setup-invite')addAgent(w);
+      else if(Object.hasOwn(window.AirportOnboarding.starters,id))openToolkit({slug:id,name:window.AirportOnboarding.starters[id],requiresAuth:true});
+      return;
+    }
+    if(action==='setup-copy'){
+      const box=$('#setup-prompt'),feedback=$('#setup-copy-status');
+      if(!box||!feedback)return;
+      const fallback=()=>{box.select();feedback.textContent=document.execCommand('copy')?'Request copied':'Select and copy the request.';};
+      if(navigator.clipboard)navigator.clipboard.writeText(box.value).then(()=>{feedback.textContent='Request copied';},fallback);
+      else fallback();
+      return;
+    }
     if(action==='trace-activity' && id===traceId){navigate('#activity/'+encodeURIComponent(id));return;}
     if(['muse','mail','permissions'].includes(action)){jumpTo(action);return;}
     if(action==='catalog'){closeDialog();navigate('#integrations');return;}
@@ -1299,6 +1383,12 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     f.querySelector('.agent-client-preview').innerHTML=invitationLogo({name:name.value.trim(),clientType:type},28);
   });
   document.addEventListener('change',e=>{
+    if(e.target.id==='setup-workspace'&&state.workspaces.some(ws=>ws.id===e.target.value)){navigate('#setup',e.target.value);return;}
+    if(e.target.id==='setup-app-choice'&&current()){
+      window.AirportOnboarding.setChoice(workspaceId,e.target.value);
+      renderSetup(current(),window.AirportOnboarding.model(state,current()));
+      $('#setup-app-choice')?.focus({preventScroll:true});return;
+    }
     if(e.target.id==='trace-select' && current()){traceId=e.target.value;graph(current(),gatewayObjects(current()));return;}
     if(e.target.matches('[data-tool-access]') && directory?.type==='tools') {
       const v=directory,item=v.items[Number(e.target.dataset.toolAccess)],select=e.target;

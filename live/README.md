@@ -1,6 +1,6 @@
 # Airport
 
-Airport connects agents to a workspace’s apps through Composio. Each workspace has its own accounts, tool permissions, agent credentials, and activity history. The owner console opens on a network graph. Select a node to manage it, or trace a recorded request to see its policy decision.
+Airport connects agents to a workspace’s apps through Composio. Each workspace has its own accounts, tool permissions, agent credentials, and activity history. On your first visit, the console guides you through connecting an app, choosing permissions and inviting an agent. You can revisit the guide at `/w/personal/setup` or open Overview to manage your connections on the radar.
 
 ## Using a workspace
 
@@ -9,7 +9,9 @@ Each console link includes its workspace in the path. For example, `/w/work/conn
 1. Choose **Add app**, or select an app from the [public integration directory](https://airport.so/integrations/). In **Connect account**, choose the destination workspace and name the account. For apps that require authorization, finish sign-in in the provider window. The Airport dialog shows verification status and lets you choose tool access once the account is ready.
 2. A verified connection opens on **Tool access**. Choose **Read only**, **Write only**, or **Read and write**, review what the preset would change, and apply it. Each preset grants the eligible versions in its preview. Under **Advanced**, choose **Customize individual tools** to make exceptions or review destructive and unclassified operations. You can block an approved tool even if Composio is unavailable.
 3. Open **Agents → Add agent**. Choose a name or let the agent choose one, then set access to 12 hours, 7 days, 30 days, or **Never expires**. An agent with **Never expires** keeps its credential until you revoke it. Copy the setup prompt into the agent within the invitation’s 10-minute claim window. Airport binds the returned bearer to this agent and workspace. Clients with a secure bearer field can use a directly issued credential. A new workspace can enroll agents before connecting an app.
-4. Ask a named agent which apps it can access. The MCP tool `airport_list_connections` and the authenticated HTTPS endpoint `GET /api/connections` list active connections and their allowed tool counts, including zero. Agents use MCP `tools/list` to discover individual operations. Airport checks the policy again before dispatch and before returning the result. The activity log identifies the caller, request, and policy outcome.
+4. Ask the agent a question it can answer using an approved tool. For example, if you approved a Gmail tool that reads inbox counts, ask how many messages are unread. Open the request in **Activity** to see which agent called the tool, in which workspace, and what Airport allowed.
+
+The setup guide recognizes the first successful agent request that reached an app. Agents can discover connections with the MCP tool `airport_list_connections` or authenticated `GET /api/connections`, then list available operations with MCP `tools/list`. Airport checks the policy before dispatch and again before returning the result.
 
 Agents need remote MCP with bearer authentication or support for an equivalent HTTP connector. On an existing Gmail inbox connection, open **Tool access → Advanced → Customize individual tools** to browse the Composio Gmail catalog. The built-in inbox counter has its own permission for compatibility with the original Muse credential. Catalog tools start blocked. Named workspace agents can use the catalog tools you approve, subject to the permissions Google granted for that account. Airport blocks open-ended proxy and code-execution tools.
 
