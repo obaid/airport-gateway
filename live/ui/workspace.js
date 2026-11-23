@@ -885,7 +885,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
     if(regions.get('workspace')!==opts){selector.innerHTML=opts;regions.set('workspace',opts);}
     selector.value=w.id;selector.disabled=false;renderWorkspaceMenu(w);
     const local=['127.0.0.1','localhost','[::1]'].includes(location.hostname);
-    $('#console-scope').textContent=local?'On this Mac':'Hosted workspace';$('#console-foot').textContent=local?'Local console':'Hosted console';
+    $('#console-scope').textContent=local?'On this computer':'Hosted workspace';$('#console-foot').textContent=local?'Local console':'Hosted console';
     if(missing){
       renderShell(w,{page:'unavailable',id:'',tab:'',query:r.query});
       $('#page-title').textContent='Workspace unavailable';$('#subtitle').textContent='Choose an available workspace to continue.';
@@ -912,7 +912,7 @@ ${esc(summary || 'Request completed')}</div></div>`:''}</section>`:'';
       $('#workspace').disabled=true;
       $('#ws-button').disabled=true;dismissRail();$('#workspace-menu').replaceChildren();
       $('#subtitle').textContent='Sign in to open your owner console.';
-      const signIn=['localhost','127.0.0.1','[::1]'].includes(location.hostname)?'Open Airport from its local launcher on this Mac.':'Open your Airport owner console and sign in again.';
+      const signIn=['localhost','127.0.0.1','[::1]'].includes(location.hostname)?'Open Airport from its local launcher on this computer.':'Open your Airport owner console and sign in again.';
       network(signIn);
       throw new Error(signIn);
     }

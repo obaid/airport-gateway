@@ -11,7 +11,7 @@
     slack: { name: "Slack", tools: ["search_messages", "read_thread", "send_message"] },
     notion: { name: "Notion", tools: ["search_pages", "read_page", "update_page"] }
   };
-  const providers = { muse: "Muse", duet: "Duet", dot: "Dot", custom: "Custom agent" };
+  const providers = { muse: "Muse", duet: "Duet", dot: "Dots", custom: "Custom agent" };
   const lifetimes = {
     "12h": { label: "12 hours", hours: 12 },
     "7d": { label: "7 days", hours: 168 },

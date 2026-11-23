@@ -1,53 +1,57 @@
-# Airport
+# Run Airport locally
 
-Airport connects agents to a workspace’s apps through Composio. Each workspace has its own accounts, tool permissions, agent credentials, and activity history. On your first visit, the console guides you through connecting an app, choosing permissions and inviting an agent. You can revisit the guide at `/w/personal/setup` or open Overview to manage your connections on the radar.
+The local server gives one person a workspace console on their own computer. Local agents can use it over loopback. Remote agents can reach it through an optional HTTPS tunnel while the computer is awake. For a shared installation with user accounts and an always-on agent URL, follow the [Render deployment guide](HOSTING.md).
 
-## Using a workspace
+## Start the console
 
-Each console link includes its workspace in the path. For example, `/w/work/connections` opens Work’s connections, and `/w/personal/activity` opens Personal’s activity. You can bookmark either or keep both open in separate tabs. Account settings are at `/account`.
-
-1. Choose **Add app**, or select an app from the [public integration directory](https://airport.so/integrations/). In **Connect account**, choose the destination workspace and name the account. For apps that require authorization, finish sign-in in the provider window. The Airport dialog shows verification status and lets you choose tool access once the account is ready.
-2. A verified connection opens on **Tool access**. Choose **Read only**, **Write only**, or **Read and write**, review what the preset would change, and apply it. Each preset grants the eligible versions in its preview. Under **Advanced**, choose **Customize individual tools** to make exceptions or review destructive and unclassified operations. You can block an approved tool even if Composio is unavailable.
-3. Open **Agents → Add agent**. Choose a name or let the agent choose one, then set access to 12 hours, 7 days, 30 days, or **Never expires**. An agent with **Never expires** keeps its credential until you revoke it. Copy the setup prompt into the agent within the invitation’s 10-minute claim window. Airport binds the returned bearer to this agent and workspace. Clients with a secure bearer field can use a directly issued credential. A new workspace can enroll agents before connecting an app.
-4. Ask the agent a question it can answer using an approved tool. For example, if you approved a Gmail tool that reads inbox counts, ask how many messages are unread. Open the request in **Activity** to see which agent called the tool, in which workspace, and what Airport allowed.
-
-The setup guide recognizes the first successful agent request that reached an app. Agents can discover connections with the MCP tool `airport_list_connections` or authenticated `GET /api/connections`, then list available operations with MCP `tools/list`. Airport checks the policy before dispatch and again before returning the result.
-
-Agents need remote MCP with bearer authentication or support for an equivalent HTTP connector. On an existing Gmail inbox connection, open **Tool access → Advanced → Customize individual tools** to browse the Composio Gmail catalog. The built-in inbox counter has its own permission for compatibility with the original Muse credential. Catalog tools start blocked. Named workspace agents can use the catalog tools you approve, subject to the permissions Google granted for that account. Airport blocks open-ended proxy and code-execution tools.
-
-## Platform configuration
-
-To refresh the public marketing directory, run `node live/export-public-integrations.mjs` with the hosted project's configuration. The command writes the names and slugs of its public, connectable integrations as JSON. The landing repository's `scripts/update-integrations.mjs` reads that export from standard input.
-
-Airport supplies the Composio project key server-side. The browser never receives it. With Gmail, Composio’s managed OAuth app can handle Google consent; Airport can instead pin an operator-configured auth template for branded consent or a different scope set. Each authorized account has a separate connection in its workspace. Provider-specific credentials for apps that use API keys are entered in the provider authorization flow.
-
-When the published app list in `dist/toolkits.json` changes, run `python3 live/refresh-integration-icons.py` from the repository root to refresh its bundled logos. This maintenance step uses Pillow, curl, and rsvg-convert. Commit the resulting WebP files with the directory update.
-
-For a hosted multi-owner installation, see [Hosting](HOSTING.md). For a local installation, Node.js 24.2 or later and `cloudflared` support the private owner console and optional temporary agent endpoint.
+Use macOS or a Linux desktop with a default browser and `xdg-open`. Install Git and Node.js with npm. Node.js 24 LTS matches the major version used by the Render Blueprint. These commands run from the repository root.
 
 ```sh
-node live/configure-platform.mjs
-node live/server.mjs
+git clone https://github.com/obaid/airport-gateway.git
+cd airport-gateway
+npm ci --prefix live
 ```
 
-The first command opens the operator’s private `platform.env` file on macOS. Set `COMPOSIO_API_KEY` there or inject it into the server environment. The file lives under `~/Library/Application Support/Airport/live`, outside the repository and HTTP assets. An already running upgraded server watches the file for saved changes. Project-owned toolkit auth templates can be pinned through the server environment variable `AIRPORT_AUTH_CONFIGS_JSON`.
+In the first terminal, start with both listeners on loopback. This works without a Composio key. On Linux, set `AIRPORT_DATA_DIR` in both terminals to choose a local state directory, for example `export AIRPORT_DATA_DIR="$HOME/.local/share/airport"`.
 
-In another terminal, open the owner console using its one-use launcher.
+```sh
+AIRPORT_NO_TUNNEL=1 node live/server.mjs
+```
+
+Wait for the line that says the owner console is listening. From a second terminal in the repository root, run the launcher. It opens the browser and exchanges a one-use ticket for a local owner session.
 
 ```sh
 node live/open.mjs
 ```
 
-The local owner interface listens on 127.0.0.1:43870 and the agent transport on 127.0.0.1:43871. A quick tunnel forwards only the agent listener. Supply `AIRPORT_PUBLIC_URL` for an independently managed HTTPS tunnel, or `AIRPORT_NO_TUNNEL=1` for local operation. A quick tunnel’s URL changes on restart.
+You should see **Personal** and **Work**. Open **Integrations** to browse the bundled app directory. Connecting a provider or running one of its tools requires your own Composio project.
 
-During a side-by-side upgrade, set `AIRPORT_CONCURRENT_GATEWAY=1`, `AIRPORT_OWNER_PORT=43970` and `AIRPORT_AGENT_PORT=43971` for both the server and its launcher. The instances share local workspace records and use distinct launcher files. Concurrent mode leaves in-flight activity in the other process alone. The catalog is also browseable before the platform credential is configured, using the bundled directory from [Composio](https://docs.composio.dev/toolkits).
+## Connect your first app
 
-## Activity details
+1. In the [Composio dashboard](https://platform.composio.dev/), choose a development project and create a project API key.
+2. Run `node live/configure-platform.mjs` in the second terminal. On macOS it opens a private configuration file in TextEdit. On Linux it prints the path to edit. Set `COMPOSIO_API_KEY` to your project key in that file and save. The running local server rereads the file. You can also inject the key from a secrets manager into the server process at startup.
+3. In Airport, open **Personal → Integrations**, choose an app, name the connection, and finish the provider's consent flow. Return to the same browser. If verification is pending, reopen the connection and select **Check connection**.
+4. Open **Tool access**, preview **Read only**, and apply it. A newly connected account starts with tools blocked. **Advanced** lets you review individual tools, including operations excluded from presets. A Composio managed auth configuration can serve multiple accounts. For toolkits that need your own OAuth app, see [provider configuration](HOSTING.md#configure-app-sign-in-once).
 
-The owner can expand each activity. Successful pilot inbox reads from the upgraded gateway retain the total and unread counts. Generic tool calls retain an input/output summary, the approved version, and dispatch status; they do not retain arbitrary email bodies, file contents, or tokens. Historical requests keep the information recorded by the gateway version that handled them.
+## Connect an agent and verify a request
 
-```sh
-cd live
-npm ci
-npm test
-```
+- **Agent running on this computer.** Open **Agents → Add agent**, name it, choose its expiry and issue an agent credential. Set the client's Streamable HTTP MCP endpoint to `http://127.0.0.1:43871/mcp` and put the bearer in its secure authorization field. The client must support loopback HTTP and bearer authentication.
+- **Agent running elsewhere.** Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/). Stop the first terminal with Ctrl-C and restart with `node live/server.mjs`. Wait for the public endpoint message, reopen the owner launcher and choose **Agents → Add agent**. Paste the single-use setup prompt into your agent within ten minutes. A quick tunnel forwards the agent listener and gets a new hostname after restart. For a managed tunnel, route its HTTPS hostname to `http://127.0.0.1:43871` and start the server with `AIRPORT_PUBLIC_URL=https://agents.example.com node live/server.mjs`.
+
+Ask the agent which connections it can use. Airport exposes `airport_list_connections` for MCP and authenticated `GET /api/connections` for HTTP clients. Then ask it to run a specific read in the connected app. For example, approve a read in your test Gmail account and ask for its inbox counts. Expand the event in **Activity** to see the agent, workspace, operation, policy outcome and recorded result. Generic tools store a summary. The dedicated Gmail inbox counter records the total and unread counts. Revoke the agent under **Agents** when you finish.
+
+## Local state and troubleshooting
+
+| Symptom or task | What to do |
+| --- | --- |
+| A direct console bookmark asks you to use the launcher | Run `node live/open.mjs` with the server running. Restarting the server invalidates the old owner session. |
+| Apps are visible but authorization is unavailable | Check the project key, refresh the console, and confirm the project supports the selected app. Provider-specific auth configs can be pinned with `AIRPORT_AUTH_CONFIGS_JSON`. |
+| A remote agent cannot reach the MCP URL | Loopback belongs to the agent's own machine. Use the current HTTPS agent URL shown by Airport. Check the server and tunnel are running. |
+| A port is busy | Set `AIRPORT_OWNER_PORT` and `AIRPORT_AGENT_PORT` to free ports for the server. Use the same owner port and state directory for the launcher. Default ports are 43870 for the console and 43871 for agents. |
+| Move or back up local state | Stop the server and copy the whole state directory, including SQLite journal files and the private `platform.env` if present. Restore it with access limited to the operator. The default path is `~/Library/Application Support/Airport/live` unless `AIRPORT_DATA_DIR` is set. |
+
+Run the gateway tests with `npm test --prefix live`. They use temporary storage and fixture providers. The hosted guide covers the [browser sign-in test](HOSTING.md#runtime-and-persistent-storage).
+
+## Maintain the integration directory
+
+From the repository root, `node live/export-public-integrations.mjs` emits public, connectable toolkit names and slugs for the configured project as JSON. The separate landing repository's `scripts/update-integrations.mjs` accepts the export on standard input. After changing `dist/toolkits.json`, run `python3 live/refresh-integration-icons.py` to refresh the bundled icons. The icon script requires Pillow, curl and rsvg-convert.

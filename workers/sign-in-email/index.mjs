@@ -1,13 +1,12 @@
 const encoder = new TextEncoder();
 const maxBytes = 1024;
 const maxClockSkew = 30;
-const sender = 'signin@auth.airport.so';
 
 function reply(status) {
   return new Response(null, {status, headers: {'cache-control':'no-store'}});
 }
 
-function validRecipient(email) {
+function validMailbox(email) {
   if (typeof email !== 'string' || email.length > 254) return false;
   const parts = email.split('@');
   if (parts.length !== 2) return false;
@@ -43,7 +42,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method !== 'POST' || url.pathname !== '/sign-in' || url.search) return reply(404);
-    if (!env.RELAY_SECRET) return reply(503);
+    const sender = env.AIRPORT_EMAIL_FROM;
+    if (!env.RELAY_SECRET || !validMailbox(sender)) return reply(503);
     const timestamp = request.headers.get('x-airport-timestamp') || '';
     const hex = request.headers.get('x-airport-signature') || '';
     if (!/^\d{10}$/.test(timestamp) || !/^[0-9a-f]{64}$/.test(hex) ||
@@ -64,7 +64,7 @@ export default {
     let message;
     try { message = JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(body)); }
     catch { return reply(400); }
-    if (!message || Object.keys(message).length !== 2 || !validRecipient(message.email) ||
+    if (!message || Object.keys(message).length !== 2 || !validMailbox(message.email) ||
         typeof message.code !== 'string' || !/^\d{8}$/.test(message.code)) return reply(400);
 
     const {email, code} = message;

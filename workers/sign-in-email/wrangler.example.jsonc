@@ -4,6 +4,7 @@
   "compatibility_date": "2026-11-21",
   "workers_dev": true,
   "preview_urls": false,
-  "send_email": [{"name": "EMAIL", "allowed_sender_addresses": ["signin@auth.airport.so"]}],
+  "vars": {"AIRPORT_EMAIL_FROM": "signin@auth.example.com"},
+  "send_email": [{"name": "EMAIL", "allowed_sender_addresses": ["signin@auth.example.com"]}],
   "observability": {"enabled": false}
 }

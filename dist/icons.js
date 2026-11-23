@@ -70,16 +70,16 @@
     slack: '<g stroke-linecap="round" stroke-width="5.2"><path stroke="#36c5f0" d="M4 10.5h6.5M10.5 4v.01"/><path stroke="#2eb67d" d="M17.5 4v6.5M24 10.5h.01"/><path stroke="#ecb22e" d="M24 17.5h-6.5m0 6.5v.01"/><path stroke="#e01e5a" d="M10.5 24v-6.5M4 17.5h.01"/></g>',
     yahoo: '<rect x="1" y="1" width="26" height="26" rx="6" fill="#6001d2"/><path d="M4.8 9h4.1l2.8 6.4 3.1-6.4h4.1l-7.3 14H7.7l2.3-4.5zm15.7-3h4l-3.4 9.6h-3z" fill="#fff"/><circle cx="18.9" cy="18.7" r="1.9" fill="#fff"/>',
     notion: '<path d="m3.4 4.7 15.8-2.3 5.6 3.7v18l-15.8 2-5.6-4.2z" stroke="#181719" stroke-width="1.45" fill="#fff" stroke-linejoin="round"/><path d="m3.7 5 5.4 3.5 15.5-2M9.1 8.5v17" fill="none" stroke="#181719" stroke-width="1.5"/><path d="m11.2 11.3 3.4-.3 4.6 6.3v-5.6l-1.4-.1v-1.2l4.1-.5v1.3l-1.2.4v9.2l-2.1.3-5-7v5.9l1.4.1v1.1l-4 .5v-1.3l1.1-.4v-7.4l-.9-.1z" fill="#181719"/>',
-    muse: '<rect width="28" height="28" rx="7" fill="#e6dcff"/><path d="M14 4.5c.7 4.4 2 5.7 6.2 3.3-2.5 4.1-1.1 5.6 3.4 6.2-4.5.7-5.9 2.1-3.4 6.3-4.3-2.4-5.6-1.1-6.2 3.4-.7-4.5-2-5.8-6.3-3.4 2.5-4.2 1-5.6-3.3-6.3 4.4-.6 5.8-2.1 3.3-6.2 4.2 2.4 5.6 1.1 6.3-3.3z" fill="#7750be"/><circle cx="14" cy="14" r="2.2" fill="#e6dcff"/>',
-    duet: '<rect width="28" height="28" rx="7" fill="#ffdec1"/><path d="M5.5 8H9a6.1 6.1 0 0 1 0 12H5.5zm9.1 0h3.5a6.1 6.1 0 0 1 0 12h-3.5z" fill="#aa5526"/>',
-    dot: '<rect width="28" height="28" rx="7" fill="#cde9df"/><g fill="#286658"><circle cx="10" cy="10" r="3.2"/><circle cx="18" cy="10" r="3.2"/><circle cx="10" cy="18" r="3.2"/><circle cx="18" cy="18" r="3.2"/></g>',
     custom: '<rect width="28" height="28" rx="7" fill="#dbe4f6"/><g fill="none" stroke="#506893" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m9.2 9.6-4 4.4 4 4.4m9.6-8.8 4 4.4-4 4.4m-3-10-3.6 11.2"/></g>'
   };
 
   const markAliases = {
-    'google-drive': 'drive', 'google-calendar': 'calendar', 'google-mail': 'gmail',
+    'dot': 'dots', 'google-drive': 'drive', 'google-calendar': 'calendar', 'google-mail': 'gmail',
     'google drive': 'drive', 'google calendar': 'calendar', 'yahoo mail': 'yahoo'
   };
+
+  const agentDirectory = new URL('agents/', document.currentScript.src);
+  const agentMarks = new Set(['muse', 'dots', 'duet', 'grok-bot', 'instinct']);
 
   let gradientID = 0;
   function instagram() {
@@ -104,6 +104,10 @@
   function logo(name, size = 28) {
     const key = nameOf(name);
     const resolved = Object.hasOwn(markAliases, key) ? markAliases[key] : key;
+    if (agentMarks.has(resolved)) {
+      const image = new URL(resolved + '.png', agentDirectory);
+      return svg('<image href="' + image.href + '" width="28" height="28"/>', size, 28, 'logo');
+    }
     const shape = resolved === 'instagram' ? instagram() : (Object.hasOwn(marks, resolved) ? marks[resolved] : marks.custom);
     return svg(shape, size, 28, 'logo');
   }

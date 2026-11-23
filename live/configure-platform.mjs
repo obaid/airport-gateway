@@ -7,7 +7,7 @@ await mkdir(dir,{recursive:true,mode:0o700});
 const filename=path.join(dir,'platform.env');
 try {
   const file=await open(filename,'wx',0o600);
-  try{await file.writeFile('# Airport server configuration on this Mac.\nCOMPOSIO_API_KEY=\n');}
+  try{await file.writeFile('# Airport local server configuration.\nCOMPOSIO_API_KEY=\n');}
   finally{await file.close();}
 }catch(err){if(err.code!=='EEXIST')throw err;}
 if(!(await lstat(filename)).isFile())throw Error('Expected a private local configuration file.');

@@ -7,13 +7,6 @@
     month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'
   });
 
-  function appMark(ctx,key) {
-    const mark = window.AirportDiscovery?.marks?.[key];
-    if (typeof mark === 'string' && mark.startsWith('data:image/png;base64,'))
-      return `<img src="${ctx.escape(mark)}" width="27" height="27" alt="">`;
-    return ctx.logo(key,26);
-  }
-
   function inventory(ctx,totals) {
     const items = [
       ['Registered users',totals.users,'user'],
@@ -28,7 +21,7 @@
 
   function integrations(ctx,rows,total) {
     const list = rows.length ? `<ul class="pa-list">${rows.map(row=>
-      `<li><div class="pa-line"><span class="pa-mark" aria-hidden="true">${appMark(ctx,row.key)}</span>
+      `<li><div class="pa-line"><span class="pa-mark" aria-hidden="true">${ctx.logo(row.key,27)}</span>
         <strong class="pa-item-name">${ctx.escape(row.label)}</strong><span class="pa-value">${numbers.format(row.count)}</span></div>
         <meter aria-hidden="true" min="0" max="${Number(total)}" value="${Number(row.count)}"></meter></li>`
     ).join('')}</ul>` : '<p class="pa-empty">No active app connections yet.</p>';

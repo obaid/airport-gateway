@@ -7,5 +7,7 @@ const port=Number(process.env.AIRPORT_OWNER_PORT||43870);
 const filename=process.env.AIRPORT_CONCURRENT_GATEWAY==='1' && port!==43870?'launcher-'+port+'.json':'launcher.json';
 const {origin,ticket,pid}=JSON.parse(await readFile(path.join(dir,filename),'utf8'));
 process.kill(pid,0);
-const child=spawn('open',[origin+'/#owner='+encodeURIComponent(ticket)],{stdio:'ignore'});
+const opener=process.platform==='linux'?'xdg-open':'open';
+const child=spawn(opener,[origin+'/#owner='+encodeURIComponent(ticket)],{stdio:'ignore'});
 child.on('error',()=>{console.error('Could not open the owner console.');process.exitCode=1;});
+child.on('exit',code=>{if(code)process.exitCode=code;});
