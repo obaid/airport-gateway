@@ -36,10 +36,9 @@
     return (app.authSchemes||[]).map(s=>schemeNames[s]||s).join(', ')||'Provider sign-in';
   }
   function mark(app,size=28){
+    if(Object.hasOwn(discovery().apps||{},app.slug))return `<span class="dir-logo real-mark"><img src="integrations/${esc(encodeURIComponent(app.slug))}.webp" width="${size}" height="${size}" alt=""></span>`;
     const key=service(app.slug);
     if(services.has(key))return `<span class="dir-logo">${Art.logo(key,size)}</span>`;
-    const src=discovery().marks?.[app.slug];
-    if(typeof src==='string' && src.startsWith('data:image/png;base64,'))return `<span class="dir-logo real-mark"><img src="${esc(src)}" width="${size}" height="${size}" alt=""></span>`;
     return `<span class="dir-logo dir-initial" aria-hidden="true">${esc(app.name.slice(0,2).toUpperCase())}</span>`;
   }
   const route=slug=>'integrations/'+slug;

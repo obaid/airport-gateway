@@ -5,8 +5,9 @@ import worker from './index.mjs';
 
 const secret = randomBytes(32).toString('base64url');
 const payload = {email:'worker-test@example.com', code:'01234567'};
+const sender = 'login@auth.example.org';
 
-async function deliver(message, {skew=0, key=secret, fail=false}={}) {
+async function deliver(message, {skew=0, key=secret, fail=false, from=sender}={}) {
   const body = JSON.stringify(message);
   const timestamp = String(Math.floor(Date.now()/1000)+skew);
   const headers = {
@@ -15,7 +16,7 @@ async function deliver(message, {skew=0, key=secret, fail=false}={}) {
   };
   const request = new Request('https://worker.test/sign-in',{method:'POST', headers, body});
   const emails = [];
-  const response = await worker.fetch(request,{RELAY_SECRET:secret, EMAIL:{async send(email) {
+  const response = await worker.fetch(request,{RELAY_SECRET:secret, AIRPORT_EMAIL_FROM:from, EMAIL:{async send(email) {
     if (fail) throw Error('Unavailable');
     emails.push(email);
   }}});
@@ -27,7 +28,7 @@ test('sends only the fixed sign-in template after verifying the gateway signatur
   assert.equal(status,204);
   assert.equal(emails.length,1);
   assert.equal(emails[0].to,payload.email);
-  assert.equal(emails[0].from.email,'signin@auth.airport.so');
+  assert.equal(emails[0].from.email,sender);
   assert.equal(emails[0].subject,'Your Airport sign-in code');
   assert.match(emails[0].text,/01234567/);
 });
@@ -38,7 +39,8 @@ test('rejects invalid signatures, stale requests and invalid recipient or templa
     [{...payload,email:'a@example.com,b@example.com'},{},400],
     [{...payload,email:'a@example.com\r\nBcc: b@example.com'},{},400],
     [{...payload,subject:'arbitrary'},{},400], [{...payload,code:'<unsafe>'},{},400],
-    [{...payload,code:'x'.repeat(2048)},{},413], [payload,{fail:true},502]
+    [{...payload,code:'x'.repeat(2048)},{},413], [payload,{fail:true},502],
+    [payload,{from:''},503], [payload,{from:'Missing domain'},503]
   ]) {
     const {status,emails} = await deliver(body,opts);
     assert.equal(status,expected);

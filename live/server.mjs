@@ -42,7 +42,7 @@ async function saveLauncher() {
 }
 function requireOwner(req) {
   const cookie=(req.headers.cookie||'').split(';').map(t=>t.trim()).find(t=>t.startsWith(sessionCookie+'='));
-  if(!cookie||!same(cookie.slice(sessionCookie.length+1),ownerSession))fail('Open Airport from this Mac’s local launcher.',401);
+  if(!cookie||!same(cookie.slice(sessionCookie.length+1),ownerSession))fail('Open Airport using the local owner launcher.',401);
 }
 async function establishSession({ticket:attempt}) {
   if(!same(attempt,ticket))fail('Use the current ticket from the local launcher.',403);
